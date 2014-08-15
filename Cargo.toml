@@ -1,0 +1,11 @@
+[package]
+
+name = "witd-rust"
+version = "0.0.1"
+authors = ["oliv <olivier.vaussy@gmail.com>"]
+
+[dependencies.http]
+git = "https://github.com/chris-morgan/rust-http"
+
+[dependencies.url]
+git = "https://github.com/servo/rust-url"
