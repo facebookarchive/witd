@@ -11,9 +11,14 @@ use curl::ErrCode;
 use serialize::json;
 use serialize::json::Json;
 
-enum WitRequest {
-  Message(String),
-  Speech(Box<Reader+Send>, String)
+enum WitRequestSpec {
+    Message(String),
+    Speech(Box<Reader+Send>, String)
+}
+
+struct WitRequest {
+    sender: Sender<Result<Json,ErrCode>>,
+    spec: WitRequestSpec
 }
 
 fn exec_request(request: Request) -> Result<Json,ErrCode> {
@@ -44,31 +49,33 @@ fn speech_request(mut stream: Box<Reader>
     exec_request(req)
 }
 
-fn result_fetcher(tx: &Sender<Result<Json,ErrCode>>, rx: &Receiver<WitRequest>) {
+fn result_fetcher(rx: &Receiver<WitRequest>) {
     loop {
-        let input = rx.recv();
-        let result = match input {
+        let WitRequest { sender: sender, spec: spec } = rx.recv();
+        let result = match spec {
           Message(msg) => message_request(msg),
           Speech(stream, content_type) => speech_request(stream, content_type)
         };
-        tx.send(result)
+        sender.send(result)
     }
 }
 
-/*fn main() {
+fn main() {
 
-    let (tx1, rx1): (Sender<Result<Json,ErrCode>>, Receiver<Result<Json,ErrCode>>) = channel();
     let (tx2, rx2): (Sender<WitRequest>, Receiver<WitRequest>) = channel();
     spawn(proc() {
-        result_fetcher(&tx1, &rx2);
+        result_fetcher(&rx2);
     });
 
     for line in io::stdin().lines() {
         let path = Path::new("test.wav");
         match File::open(&path) {
             Ok(file) => {
-                tx2.send(Speech(box file, "audio/wav".to_string()));
-                //tx2.send(Message(line.unwrap()));
+                let (tx1, rx1): (Sender<Result<Json,ErrCode>>, Receiver<Result<Json,ErrCode>>) = channel();
+                let spec = Speech(box file, "audio/wav".to_string());
+                //let spec = Message(line.unwrap());
+                let req = WitRequest{ sender: tx1, spec: spec };
+                tx2.send(req);
                 match rx1.recv() {
                     Ok(json) => {
                         println!("Result: {}", json);
@@ -79,4 +86,4 @@ fn result_fetcher(tx: &Sender<Result<Json,ErrCode>>, rx: &Receiver<WitRequest>) 
             Err(err) => println!("Error opening file {}", err)
         }
     }
-}*/
+}
