@@ -17,12 +17,13 @@ pub enum WitRequestSpec {
 
 pub struct WitRequest {
     pub sender: Sender<Result<Json,ErrCode>>,
-    pub spec: WitRequestSpec
+    pub spec: WitRequestSpec,
+    pub token: String
 }
 
-fn exec_request(request: Request) -> Result<Json,ErrCode> {
+fn exec_request(request: Request, token: String) -> Result<Json,ErrCode> {
     request
-        .header("Authorization", "Bearer 6FUG2L4PL5YFHDQYAOY6WCEA2EFDGFUV")
+        .header("Authorization", format!("Bearer {}", token).as_slice())
         .header("Accept", "application/vnd.wit.20140620+json")
     .exec().map(|resp| {
         let body = resp.get_body();
@@ -32,29 +33,29 @@ fn exec_request(request: Request) -> Result<Json,ErrCode> {
     })
 }
 
-fn message_request(msg: String) -> Result<Json,ErrCode> {
+fn message_request(msg: String, token: String) -> Result<Json,ErrCode> {
     let mut init_req = http::handle();
     let req = init_req
         .get(format!("https://api.wit.ai/message?q={}", msg));
-    exec_request(req)
+    exec_request(req, token)
 }
 
 fn speech_request(mut stream: Box<Reader>
-                  , content_type: String) -> Result<Json,ErrCode> {
+                  , content_type: String, token: String) -> Result<Json,ErrCode> {
     let mut init_req = http::handle();
     let req = init_req.post("https://api.wit.ai/speech", &mut stream as &mut Reader)
         .content_type(content_type.as_slice())
         .chunked();
-    exec_request(req)
+    exec_request(req, token)
 }
 
 
 pub fn result_fetcher(rx: Receiver<WitRequest>) {
     loop {
-        let WitRequest { sender: sender, spec: spec } = rx.recv();
+        let WitRequest { sender: sender, spec: spec, token: token } = rx.recv();
         let result = match spec {
-          Message(msg) => message_request(msg),
-          Speech(stream, content_type) => speech_request(stream, content_type)
+          Message(msg) => message_request(msg, token),
+          Speech(stream, content_type) => speech_request(stream, content_type, token)
         };
         sender.send(result)
     }
