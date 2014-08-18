@@ -1,24 +1,23 @@
 extern crate http;
-extern crate url;
 extern crate curl;
 extern crate serialize;
 use std::io;
 use std::str;
 use std::io::File;
-use curl::http;
-use curl::http::Request;
-use curl::ErrCode;
+use self::curl::http;
+use self::curl::http::Request;
+use self::curl::ErrCode;
 use serialize::json;
 use serialize::json::Json;
 
-enum WitRequestSpec {
+pub enum WitRequestSpec {
     Message(String),
     Speech(Box<Reader+Send>, String)
 }
 
-struct WitRequest {
-    sender: Sender<Result<Json,ErrCode>>,
-    spec: WitRequestSpec
+pub struct WitRequest {
+    pub sender: Sender<Result<Json,ErrCode>>,
+    pub spec: WitRequestSpec
 }
 
 fn exec_request(request: Request) -> Result<Json,ErrCode> {
@@ -49,7 +48,8 @@ fn speech_request(mut stream: Box<Reader>
     exec_request(req)
 }
 
-fn result_fetcher(rx: &Receiver<WitRequest>) {
+
+pub fn result_fetcher(rx: Receiver<WitRequest>) {
     loop {
         let WitRequest { sender: sender, spec: spec } = rx.recv();
         let result = match spec {
@@ -60,8 +60,7 @@ fn result_fetcher(rx: &Receiver<WitRequest>) {
     }
 }
 
-fn main() {
-
+/* fn main() {
     let (tx2, rx2): (Sender<WitRequest>, Receiver<WitRequest>) = channel();
     spawn(proc() {
         result_fetcher(&rx2);
@@ -87,3 +86,4 @@ fn main() {
         }
     }
 }
+*/
