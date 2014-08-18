@@ -34,7 +34,7 @@ impl Server for WitDServer {
 
         match _r.request_uri {
             AbsolutePath(ref uri) => wit_server::handle_req(&self.req_chan_in, w, uri),
-            _ => wit_server::handle_err(w, Some(_r.request_uri), "Invalid URI".to_string())
+            _ => wit_server::return_err(w, Some(_r.request_uri), "Invalid URI".to_string())
         } 
     }
 }
