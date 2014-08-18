@@ -1,9 +1,7 @@
 extern crate http;
 extern crate curl;
 extern crate serialize;
-use std::io;
 use std::str;
-use std::io::File;
 use self::curl::http;
 use self::curl::http::Request;
 use self::curl::ErrCode;
