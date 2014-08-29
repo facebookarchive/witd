@@ -37,13 +37,30 @@ The easiest way to have WitD running on a Raspberry Pi is to run the provided pr
 ./witd-rust
 ```
 
-If you insist on compiling it yourself:
+###### Building witd-rust for Raspberry Pi yourself
 
-1) Setup a Rust cross-compiler by following [these instructions]("https://wit.ai").
-2) Setup sshfs on your system
-3) Run the build script:
+The procedure below describes how to cross-compile witd-rust on a Debian host targeting Raspbian. It may work with other configurations but has not been tested yet.
+
+1. Setup a Rust cross-compiler by following [these instructions](https://github.com/npryce/rusty-pi/blob/master/doc/compile-the-compiler.asciidoc).
+2. Install the required libraries on the Raspberry Pi:
 ```bash
-./build
+pi@raspberrypi ~$ sudo apt-get install libssl-dev libcurl4-openssl-dev libcrypto++-dev
 ```
+3. Install sshfs so that the build script running on the host can access the precompiled libraries on the Raspberry Pi by mounting a remote filesystem:
+```bash
+sudo apt-get install sshfs
+sudo modprobe fuse
+sudo adduser `whoami` fuse
+sudo chown root:fuse /dev/fuse
+sudo chmod +x /bin/fusermount
+newgrp fuse (or logout/login)
+newgrp
+```
+4. Run the build script:
+```bash
+./raspbuild pi@192.168.1.54
+```
+where `pi` is a user on the Raspberry Pi and 192.168.1.54 is the IP of the Raspberry Pi. You need read access to /usr/lib/arm-linux-gnueabihf and /lib/arm-linux-gnueabihf on the Raspberry Pi (which is the case for the default user on Raspbian). You may be prompted for your Debian and/or Raspberry Pi password.
 
- 
+The resulting executable should be in `target/arm-unknown-linux-gnueabihf/witd-rust`.
+
