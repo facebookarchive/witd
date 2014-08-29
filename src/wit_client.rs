@@ -1,4 +1,3 @@
-extern crate http;
 extern crate curl;
 extern crate serialize;
 use std::str;

@@ -9,3 +9,4 @@ git = "https://github.com/chris-morgan/rust-http"
 
 [dependencies.curl]
 git = "https://github.com/carllerche/curl-rust.git"
+

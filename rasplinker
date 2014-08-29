@@ -1,0 +1,2 @@
+#!/bin/bash
+arm-linux-gnueabihf-g++ -L/usr/lib/arm-linux-gnueabihf -Wl,-rpath-link,/usr/lib/arm-linux-gnueabihf -Wl,-rpath-link,/lib/arm-linux-gnueabihf $*

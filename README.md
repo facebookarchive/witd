@@ -29,3 +29,21 @@ $ curl -X GET "http://localhost:9877/text?q=Hello%20world"
 
 ###Voice request
 
+###Running on Raspberry Pi
+
+The easiest way to have WitD running on a Raspberry Pi is to run the provided precompiled executable:
+
+```bash
+./witd-rust
+```
+
+If you insist on compiling it yourself:
+
+1) Setup a Rust cross-compiler by following [these instructions]("https://wit.ai").
+2) Setup sshfs on your system
+3) Run the build script:
+```bash
+./build
+```
+
+ 
