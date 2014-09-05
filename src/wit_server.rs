@@ -65,13 +65,20 @@ fn handle_text(req_chan_in: &Sender<wit_client::WitRequest>,
     }
 }
 
-pub fn handle_req(req_chan_in: &Sender<wit_client::WitRequest>, 
-                  w: &mut ResponseWriter, 
+pub fn handle_req(req_chan_in: &Sender<wit_client::WitRequest>,
+                  w: &mut ResponseWriter,
                   uri: &String) -> () {
     println!("uri_parsed {}", uri);
     let uri_vec:Vec<&str> = uri.as_slice().split('?').collect();
     match uri_vec.as_slice() {
-        ["/text", ..args] => handle_text(req_chan_in, w, args[0]),
+        ["/text", ..args] => {
+            if args.len() == 0 {
+                w.write("no args".as_bytes())
+                    .unwrap_or_else(|e| println!("could not write resp"));
+            } else {
+                handle_text(req_chan_in, w, args[0])
+            }
+        },
         _ => println!("Another request : {}", uri)
     }
 }
