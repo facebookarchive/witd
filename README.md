@@ -52,7 +52,7 @@ The easiest way to have WitD running on a Raspberry Pi is to run the provided pr
 ./witd-rust
 ```
 
-### Building witd-rust for Raspberry Pi yourself
+### Building witd-rust for Raspberry Pi (for the brave)
 
 The procedure below describes how to cross-compile witd-rust on a Debian host targeting Raspbian. It may work with other configurations but has not been tested yet.
 
