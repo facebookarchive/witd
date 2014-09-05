@@ -6,6 +6,7 @@ use self::curl::http::Request;
 use self::curl::ErrCode;
 use serialize::json;
 use serialize::json::Json;
+use self::curl::http::body::{Body, ToBody, ChunkedBody};
 
 pub enum WitRequestSpec {
     Message(String),
@@ -37,10 +38,19 @@ fn message_request(msg: String, token: String) -> Result<Json,ErrCode> {
     exec_request(req, token)
 }
 
-fn speech_request(mut stream: Box<Reader>
+pub struct WrapReader<'a>(pub &'a mut Reader+Send);
+
+impl<'a> ToBody<'a> for WrapReader<'a> {
+    fn to_body(self) -> Body<'a> {
+        let WrapReader(x) = self;
+        ChunkedBody(x)
+    }
+}
+
+fn speech_request(mut stream: Box<Reader+Send>
                   , content_type: String, token: String) -> Result<Json,ErrCode> {
     let mut init_req = http::handle();
-    let req = init_req.post("https://api.wit.ai/speech", &mut stream as &mut Reader)
+    let req = init_req.post("https://api.wit.ai/speech", WrapReader(&mut*stream))
         .content_type(content_type.as_slice())
         .chunked();
     exec_request(req, token)
