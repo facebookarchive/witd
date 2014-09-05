@@ -76,8 +76,12 @@ pub fn handle_req(req_chan_in: &Sender<wit_client::WitRequest>,
     }
 }
 
+
+
 pub fn return_err(w: &mut ResponseWriter, uri: Option<RequestUri>, err: String) -> () {
     println!("An error occured for uri {} : {}", uri, err);
     let error = HttpError {status: 400, code: 1, error: err};
     w.write(json::encode(&error).as_bytes()).unwrap();
 }
+
+pub fn init() -> 

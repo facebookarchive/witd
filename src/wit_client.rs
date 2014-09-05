@@ -1,6 +1,7 @@
 extern crate curl;
 extern crate serialize;
 use std::str;
+use std::io;
 use self::curl::http;
 use self::curl::http::Request;
 use self::curl::ErrCode;
@@ -10,7 +11,7 @@ use self::curl::http::body::{Body, ToBody, ChunkedBody};
 
 pub enum WitRequestSpec {
     Message(String),
-    Speech(Box<Reader+Send>, String)
+    Speech(String)
 }
 
 pub struct WitRequest {
@@ -38,7 +39,7 @@ fn message_request(msg: String, token: String) -> Result<Json,ErrCode> {
     exec_request(req, token)
 }
 
-pub struct WrapReader<'a>(pub &'a mut Reader+Send);
+pub struct WrapReader<'a>(pub &'a mut Reader+'static);
 
 impl<'a> ToBody<'a> for WrapReader<'a> {
     fn to_body(self) -> Body<'a> {
@@ -47,51 +48,33 @@ impl<'a> ToBody<'a> for WrapReader<'a> {
     }
 }
 
-fn speech_request(mut stream: Box<Reader+Send>
-                  , content_type: String, token: String) -> Result<Json,ErrCode> {
+fn speech_request(stream: &mut io::ChanReader, content_type:String, token: String) -> Result<Json,ErrCode> {    
     let mut init_req = http::handle();
-    let req = init_req.post("https://api.wit.ai/speech", WrapReader(&mut*stream))
+    let req = init_req.post("https://api.wit.ai/speech", WrapReader(stream))
         .content_type(content_type.as_slice())
         .chunked();
     exec_request(req, token)
 }
 
-
-pub fn result_fetcher(rx: Receiver<WitRequest>) {
+fn job(cmd_rx: Receiver<WitRequest>, mut stream: io::ChanReader) {
     loop {
-        let WitRequest { sender: sender, spec: spec, token: token } = rx.recv();
+        let WitRequest { sender: sender, spec: spec, token: token } = cmd_rx.recv();
+        println!("Receiving cmd in wit client");
         let result = match spec {
           Message(msg) => message_request(msg, token),
-          Speech(stream, content_type) => speech_request(stream, content_type, token)
+          Speech(content_type) => speech_request(&mut stream, content_type, token)
         };
         sender.send(result)
     }
 }
 
-/* fn main() {
-    let (tx2, rx2): (Sender<WitRequest>, Receiver<WitRequest>) = channel();
+pub fn init() -> (Sender<WitRequest>, Sender<Vec<u8>>){
+    let (cmd_tx, cmd_rx): (Sender<WitRequest>, Receiver<WitRequest>) = channel();
+    let (wave_tx, wave_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel();
+    let stream = io::ChanReader::new(wave_rx);
+    println!("Spawning wit client ...");
     spawn(proc() {
-        result_fetcher(&rx2);
+        job(cmd_rx, stream);
     });
-
-    for line in io::stdin().lines() {
-        let path = Path::new("test.wav");
-        match File::open(&path) {
-            Ok(file) => {
-                let (tx1, rx1): (Sender<Result<Json,ErrCode>>, Receiver<Result<Json,ErrCode>>) = channel();
-                let spec = Speech(box file, "audio/wav".to_string());
-                //let spec = Message(line.unwrap());
-                let req = WitRequest{ sender: tx1, spec: spec };
-                tx2.send(req);
-                match rx1.recv() {
-                    Ok(json) => {
-                        println!("Result: {}", json);
-                    }
-                    Err(failure) => println!("Failure: {}", failure)
-                }
-            }
-            Err(err) => println!("Error opening file {}", err)
-        }
-    }
+    return (cmd_tx, wave_tx);
 }
-*/
