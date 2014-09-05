@@ -1,26 +1,31 @@
-#witd
+# witd
 
-Witd is a light executable that makes it easy to use wit.ai on a wide range of devices. It manages the audio capture and the queries to the wit.ai servers.
+`witd` is a light executable that makes it easy to use Wit.ai on a wide range of devices. It manages the audio recording and the queries to Wit.ai.
 
-##How to build
+## How to build
 
-Witd is written in rust. You can easily build it with :
+Witd is written in [Rust][rust]. Build it with:
 
 ```bash
 $ cargo build
 ```
 
-##Launch the server
+## Start the server
 
-To launch the server :
+Start the server:
 
 ```bash
-$ HOST=0.0.0.0 PORT=9877 ./target/witd-rust
+$ HOST=0.0.0.0 PORT=9877 ./target/witd
 ```
 
-##Send request
+## Send requests
 
-###Voice request
+### Speech request
+
+For the moment, witd requires that you tell it when to start and stop recording. Moving forward, 2 new modes will be added:
+
+- "silence detection" to stop the recording
+- "hands-free" to start and stop the recording when user is speaking
 
 Start recording audio and streaming it to wit.ai:
 
@@ -29,32 +34,31 @@ $ curl -X GET "http://localhost:9877/start&access_token=<YOUR_ACCESS_TOKEN>"
 ```
 
 Stop recording audio and receive the wit.ai response:
-
 ```bash
 $ curl -X GET "http://localhost:9877/stop"
 {"_text":"Hello world","msg_id":"fbe2a1ff-3869-49d8-885d-67e23357ffdc","outcomes":[{"_text":"Hello world","confidence":0.263,"entities":{"location":[{"suggested":true,"value":"Hello world"}]},"intent":"get_weather"}]}
 ```
 
-###Text request
+### Text request
 
-Witd can also directly send text requests to wit.ai:
+witd can also directly send text requests to wit.ai:
 
 ```bash
 $ curl -X GET "http://localhost:9877/text?q=Hello%20world&access_token=<YOUR_ACCESS_TOKEN>"
 {"_text":"Hello world","msg_id":"fbe2a1ff-3869-49d8-885d-67e23357ffdc","outcomes":[{"_text":"Hello world","confidence":0.263,"entities":{"location":[{"suggested":true,"value":"Hello world"}]},"intent":"get_weather"}]}
 ```
 
-##Running on Raspberry Pi
+## Running on Raspberry Pi
 
-The easiest way to have WitD running on a Raspberry Pi is to run the provided precompiled executable:
+The easiest way to have witd running on a Raspberry Pi is to run the provided ARM binaries:
 
 ```bash
-./witd-rust
+./witd-arm
 ```
 
-### Building witd-rust for Raspberry Pi (for the brave)
+### Building witd-arm for Raspberry Pi (for the brave)
 
-The procedure below describes how to cross-compile witd-rust on a Debian host targeting Raspbian. It may work with other configurations but has not been tested yet.
+The procedure below describes how to cross-compile witd-arm on a Debian host targeting Raspbian. It may work with other configurations but has not been tested yet.
 
 1. Setup a Rust cross-compiler by following [these instructions](https://github.com/npryce/rusty-pi/blob/master/doc/compile-the-compiler.asciidoc).
 2. Install the required libraries on the Raspberry Pi:
@@ -77,5 +81,6 @@ newgrp
 ```
 where `pi` is a user on the Raspberry Pi and 192.168.1.54 is the IP of the Raspberry Pi. You need read access to /usr/lib/arm-linux-gnueabihf and /lib/arm-linux-gnueabihf on the Raspberry Pi (which is the case for the default user on Raspbian). You may be prompted for your Debian and/or Raspberry Pi password.
 
-The resulting executable should be in `target/arm-unknown-linux-gnueabihf/witd-rust`.
+The resulting executable should be in `target/arm-unknown-linux-gnueabihf/witd`.
 
+[rust]: http://rust-lang.org
