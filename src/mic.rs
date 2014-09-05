@@ -1,7 +1,7 @@
 extern crate libc;
 
 use std::{c_vec, ptr, mem, io, sync, time};
-use libc::{c_void, c_int, c_long, c_double, size_t, malloc};
+use self::libc::{c_void, c_int, c_long, c_double, size_t, malloc};
 
 type PaDeviceIndex = c_int;
 type PaError = c_int;
@@ -87,92 +87,66 @@ extern "C" fn stream_callback
          PaContinue
      }
 
-fn mic_init () -> (Box<io::ChanReader>, Sender<bool>) {
-    unsafe { Pa_Initialize() };
-    let (mut tx, rx) = channel();
-    let reader = io::ChanReader::new(rx);
-
-    let (ctl_tx, ctl_rx) = channel();
-
-    // spawn actor
-    spawn(proc() {
-        let mut stream: *mut PaStream = ptr::mut_null();
-        let frames_per_buffer: u32 = 32;
-
-        // let (mut tx, rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel();
-        let mut tx = tx.clone();
-        let tx_ptr: *mut c_void = &mut tx as *mut _ as *mut c_void;
-
-        unsafe {
-            let err = Pa_OpenDefaultStream(
-                &mut stream, 1, 1, paUInt8, 16000. as c_double, frames_per_buffer,
-                Some(stream_callback), tx_ptr);
-            if err != paNoError {
-                println!("error while opening stream: {}", err);
-            }
+fn job(wave_tx: Sender<Vec<u8>>, mic_rx: Receiver<bool>) {
+    let mut stream: *mut PaStream = ptr::mut_null();
+    let frames_per_buffer: u32 = 32;
+    
+    let mut tx = wave_tx.clone();
+    let tx_ptr: *mut c_void = &mut tx as *mut _ as *mut c_void;
+    
+    unsafe {
+        let err = Pa_OpenDefaultStream(
+            &mut stream, 1, 1, paUInt8, 16000. as c_double, frames_per_buffer,
+            Some(stream_callback), tx_ptr);
+        if err != paNoError {
+            println!("error while opening stream: {}", err);
         }
-
-        loop {
-            println!("mic agent: ready to recv");
-            let r: Result<bool, ()> = ctl_rx.recv_opt();
-
-            if r.is_err() {
-                println!("mic agent: done");
-                break;
-            }
-
-            let x = r.unwrap();
-            println!("mic agent: recv'd {}", x);
-
-            if x == true {
-                unsafe {
-                    let err = Pa_StartStream(stream);
+    }
+    
+    loop {
+        println!("mic agent: ready to recv");
+        let r: Result<bool, ()> = mic_rx.recv_opt();
+        
+        if r.is_err() {
+            println!("mic agent: done");
+            break;
+        }
+        
+        let x = r.unwrap();
+        println!("mic agent: recv'd {}", x);
+        
+        if x == true {
+            unsafe {
+                let err = Pa_StartStream(stream);
                     if err != paNoError {
                         println!("error while starting stream: {}", err);
                     }
-                };
-                // mic_do_start(&mut state);
-            } else if x == false {
-                unsafe {
-                    let err = Pa_StopStream(stream);
-                    if err != paNoError {
-                        println!("error while stopping stream: {}", err);
-                    }
+            };
+        } else if x == false {
+            unsafe {
+                let err = Pa_StopStream(stream);
+                if err != paNoError {
+                    println!("error while stopping stream: {}", err);
                 }
-                // mic_do_stop(&mut state);
             }
-        }
-    });
-
-    (box reader, ctl_tx)
-}
-
-fn mic_do_start(state: &mut MicState) {
-    unsafe {
-        let err = Pa_StartStream(state.stream);
-        if err != paNoError {
-            println!("error while starting stream: {}", err);
-        }
-    };
-}
-
-fn mic_do_stop(state: &mut MicState) {
-    unsafe {
-        let err = Pa_StopStream(state.stream);
-        if err != paNoError {
-            println!("error while stopping stream: {}", err);
         }
     }
 }
 
-fn mic_start(tx: &Sender<bool>) {
-    tx.send(true);
+pub fn init (wave_tx: Sender<Vec<u8>>) -> (Sender<bool>) {
+    unsafe { Pa_Initialize() };
+
+    let (mic_tx, mic_rx) = channel();
+
+    // spawn actor
+    spawn(proc() {
+        job(wave_tx, mic_rx);
+    });
+
+    return mic_tx;
 }
 
-fn mic_stop(tx: &Sender<bool>) {
-    tx.send(false);
-}
-
+/*
 fn test() {
     let (box reader, ctl) = mic_init();
 
@@ -186,3 +160,4 @@ fn test() {
     let mut w = io::File::open_mode(&Path::new("/tmp/foo.raw"), io::Open, io::ReadWrite);
     io::util::copy(&mut r, &mut w);
 }
+*/
