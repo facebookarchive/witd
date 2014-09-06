@@ -34,7 +34,7 @@ fn parse_query_params<'s>(uri: &'s str) -> HashMap<&'s str, &'s str> {
             [k, v, ..] => args.insert(k, v),
             _ => false
         };
-        println!("param {} inserted : {}", v_params, inserted);
+        // println!("param {} inserted : {}", v_params, inserted);
     }
     return args;
 }
@@ -55,20 +55,9 @@ impl Server for HttpServer {
         w.headers.server = Some(format!("witd 0.0.1"));
 
 
-        println!("http request: {}", r.request_uri);
+        println!("[http] request: {}", r.request_uri);
         match r.request_uri {
             AbsolutePath(ref uri) => {
-    // println!("{}", params);
-    // let token = params.find(&"access_token");
-    // match token {
-    //     None => response_tx.send(Ok(json::from_str("err").unwrap())),
-        // Some(token) => {
-        //     println!("Starting to listen");
-        //     cmd_tx.send(wit_client::WitRequest{sender: response_tx,
-        //                                        token: token.to_string(),
-        //                                        spec: wit_client::Speech("audio/raw;encoding=unsigned-integer;bits=16;rate=8000;endian=big".to_string())});
-        //     mic_req_chan_in.send(true);
-        // }
                 let uri_vec:Vec<&str> = uri.as_slice().split('?').collect();
 
                 match uri_vec.as_slice() {
@@ -80,7 +69,6 @@ impl Server for HttpServer {
                         }
 
                         let params = parse_query_params(uri_vec[1]);
-                        println!("[http] text request {}", params);
                         let token = params.find(&"access_token");
                         let text = params.find(&"q");
 
@@ -106,7 +94,6 @@ impl Server for HttpServer {
                         }
 
                         let params = parse_query_params(uri_vec[1]);
-                        println!("[http] start_recording request {}", params);
                         let token = params.find(&"access_token");
 
                         if token.is_none() {
@@ -123,7 +110,6 @@ impl Server for HttpServer {
                     },
                     ["/stop", ..args] => {
                         // sync Wit stop
-                        println!("[http] stop request");
                         let wit_rx = wit::stop_recording(&self.wit_tx);
                         let json = wit_rx.recv();
                         println!("[http] recv from wit: {}", json);

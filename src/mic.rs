@@ -67,7 +67,7 @@ extern "C" fn stream_callback
      frame_count: u32, info: *const PaStreamCallbackTimeInfo,
      flags: PaStreamCallbackFlags, data: *mut c_void)
      -> PaStreamCallbackResult {
-         println!("rx {} frames", frame_count);
+         // println!("rx {} frames", frame_count);
 
          let c_bytes: c_vec::CVec<u8> = unsafe {
              c_vec::CVec::new(input as *mut u8, frame_count as uint)
@@ -78,7 +78,7 @@ extern "C" fn stream_callback
              &mut *(data as *mut Sender<Vec<u8>>)
          };
 
-         println!("tx addr: {:p}, bytes len: {}", tx, bytes.len())
+         // println!("tx addr: {:p}, bytes len: {}", tx, bytes.len())
          let result = tx.send_opt(bytes);
          if result.is_err() {
              println!("error while sending: {}", result.err());
@@ -121,16 +121,16 @@ pub fn init () -> (Box<io::ChanReader>, Sender<bool>) {
         }
 
         loop {
-            println!("mic agent: ready to recv");
+            println!("[mic] ready to recv");
             let r: Result<bool, ()> = ctl_rx.recv_opt();
 
             if r.is_err() {
-                println!("mic agent: done");
+                println!("[mic] done");
                 break;
             }
 
             let x = r.unwrap();
-            println!("mic agent: recv'd {}", x);
+            println!("[mic] recv'd {}", x);
 
             if x == true {
                 unsafe {
