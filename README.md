@@ -69,15 +69,16 @@ The easiest way to have witd running on a Raspberry Pi is to run the provided AR
 
 The procedure below describes how to cross-compile witd-arm on a Debian host targeting Raspbian. It may work with other configurations but has not been tested yet.
 
-1. Setup a Rust cross-compiler by following [these instructions](https://github.com/npryce/rusty-pi/blob/master/doc/compile-the-compiler.asciidoc). However, make sure to pass the extra `--enable-rpath` argument to the configure script:
+* Setup a Rust cross-compiler by following [these instructions](https://github.com/npryce/rusty-pi/blob/master/doc/compile-the-compiler.asciidoc). However, make sure to pass the extra `--enable-rpath` argument to the configure script:
 ```bash
 ./configure --target=arm-unknown-linux-gnueabihf --prefix=$HOME/pi-rust --enable-rpath && make && make install
 ```
-2. Install the required libraries on the Raspberry Pi:
+* Install the required libraries on the Raspberry Pi, and create a libportaudio.so symlink:
 ```bash
 pi@raspberrypi ~$ sudo apt-get install libssl-dev libcurl4-openssl-dev libcrypto++-dev libportaudio-dev
+pi@raspberrypi ~$ ln -s /usr/lib/arm-linux-gnueabihf/libportaudio.so.2 /usr/lib/arm-linux-gnueabihf/libportaudio.so
 ```
-3. Install sshfs so that the build script running on the host can access the precompiled libraries on the Raspberry Pi by mounting a remote filesystem:
+* Install sshfs so that the build script running on the host can access the precompiled libraries on the Raspberry Pi by mounting a remote filesystem:
 ```bash
 sudo apt-get install sshfs
 sudo modprobe fuse
@@ -87,7 +88,7 @@ sudo chmod +x /bin/fusermount
 newgrp fuse (or logout/login)
 newgrp
 ```
-4. Run the build script:
+* Run the build script:
 ```bash
 ./raspbuild pi@192.168.1.54
 ```
