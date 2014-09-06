@@ -10,18 +10,8 @@ use serialize::json::Json;
 use self::curl::http::body::{Body, ToBody, ChunkedBody};
 use mic;
 
-pub enum WitRequestSpec {
-    Message(String),
-    Speech(String)
-}
-
-pub struct WitRequest {
-    pub sender: Sender<Result<Json,ErrCode>>,
-    pub spec: WitRequestSpec,
-    pub token: String
-}
-
 pub enum WitCommand {
+    Text(String, String, Sender<Result<Json, ErrCode>>),
     Start(String, String),
     Stop(Sender<Result<Json, ErrCode>>)
 }
@@ -40,7 +30,7 @@ fn exec_request(request: Request, token: String) -> Result<Json,ErrCode> {
     })
 }
 
-fn message_request(msg: String, token: String) -> Result<Json,ErrCode> {
+fn do_message_request(msg: String, token: String) -> Result<Json,ErrCode> {
     let mut init_req = http::handle();
     let req = init_req
         .get(format!("https://api.wit.ai/message?q={}", msg));
@@ -56,7 +46,7 @@ impl<'a> ToBody<'a> for WrapReader<'a> {
     }
 }
 
-fn speech_request(stream: &mut io::ChanReader, content_type:String, token: String) -> Result<Json,ErrCode> {
+fn do_speech_request(stream: &mut io::ChanReader, content_type:String, token: String) -> Result<Json,ErrCode> {
     let mut init_req = http::handle();
     let req = init_req.post("https://api.wit.ai/speech", WrapReader(stream))
         .content_type(content_type.as_slice())
@@ -64,25 +54,21 @@ fn speech_request(stream: &mut io::ChanReader, content_type:String, token: Strin
     exec_request(req, token)
 }
 
-fn job(cmd_rx: Receiver<WitRequest>, mut stream: io::ChanReader) {
-    loop {
-        let WitRequest { sender: sender, spec: spec, token: token } = cmd_rx.recv();
-        println!("Receiving cmd in wit client");
-        let result = match spec {
-          Message(msg) => message_request(msg, token),
-          Speech(content_type) => speech_request(&mut stream, content_type, token)
-        };
-        sender.send(result)
-    }
+pub fn interpret_string(ctl: &Sender<WitCommand>,
+                        token: String,
+                        text: String) -> Receiver<Result<Json,ErrCode>> {
+    let (result_tx, result_rx) = channel();
+    ctl.send(Text(token, text, result_tx));
+    return result_rx
 }
 
-pub fn wit_speech_start(ctl: &Sender<WitCommand>,
+pub fn start_recording(ctl: &Sender<WitCommand>,
                         token: String,
                         content_type: String) {
     ctl.send(Start(token, content_type));
 }
 
-pub fn wit_speech_stop(ctl: &Sender<WitCommand>) -> Receiver<Result<Json,ErrCode>> {
+pub fn stop_recording(ctl: &Sender<WitCommand>) -> Receiver<Result<Json,ErrCode>> {
     let (result_tx, result_rx) = channel();
     ctl.send(Stop(result_tx));
     return result_rx
@@ -98,6 +84,11 @@ pub fn init() -> Sender<WitCommand>{
         loop {
             let cmd = cmd_rx.recv();
             ongoing = match cmd {
+                Text(token, text, result_tx) => {
+                    let r = do_message_request(text, token);
+                    result_tx.send(r);
+                    ongoing
+                }
                 Start(token, content_type) => {
                     if ongoing.is_none() {
                         let (http_tx, http_rx) = channel();
@@ -106,8 +97,7 @@ pub fn init() -> Sender<WitCommand>{
 
                         spawn(proc() {
                             let mut reader_ref = &mut *reader;
-                            let foo = speech_request(reader_ref, content_type, token);
-                            println!("{}", foo);
+                            let foo = do_speech_request(reader_ref, content_type, token);
                             http_tx.send(foo);
                         });
 

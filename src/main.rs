@@ -3,37 +3,41 @@ extern crate curl;
 extern crate http;
 extern crate url;
 extern crate serialize;
+use std::collections::HashMap;
+use std::io;
 use std::io::net::ip::{SocketAddr, IpAddr, Ipv4Addr};
+use std::os;
 use http::server::{Config, Server, ResponseWriter};
 use http::server::request::{AbsolutePath, Request, RequestUri};
 use http::headers::content_type::MediaType;
-use std::os;
-use std::io;
 use self::curl::ErrCode;
 use serialize::json;
 use serialize::json::Json;
-mod wit_client;
+mod wit;
 mod mic;
 
 #[deriving(Clone)]
 struct HttpServer {
     host: IpAddr,
     port: u16,
-    wit_tx: Sender<wit_client::WitCommand>
+    wit_tx: Sender<wit::WitCommand>
 }
 
-    // let params = parse_query_params(uri);
-    // println!("{}", params);
-    // let token = params.find(&"access_token");
-    // match token {
-    //     None => response_tx.send(Ok(json::from_str("err").unwrap())),
-        // Some(token) => {
-        //     println!("Starting to listen");
-        //     cmd_tx.send(wit_client::WitRequest{sender: response_tx,
-        //                                        token: token.to_string(),
-        //                                        spec: wit_client::Speech("audio/raw;encoding=unsigned-integer;bits=16;rate=8000;endian=big".to_string())});
-        //     mic_req_chan_in.send(true);
-        // }
+fn parse_query_params<'s>(uri: &'s str) -> HashMap<&'s str, &'s str> {
+    let mut args = HashMap::<&'s str, &'s str>::new();
+    let all_params: Vec<&str> = uri.split('&').collect();
+    for param in all_params.iter() {
+        let v_params:Vec<&str> = param.split('=').collect();
+        let inserted = match v_params.as_slice() {
+            [k] => args.insert(k, "true"),
+            [k, v] => args.insert(k, v),
+            [k, v, ..] => args.insert(k, v),
+            _ => false
+        };
+        println!("param {} inserted : {}", v_params, inserted);
+    }
+    return args;
+}
 
 impl Server for HttpServer {
     fn get_config(&self) -> Config {
@@ -54,21 +58,73 @@ impl Server for HttpServer {
         println!("http request: {}", r.request_uri);
         match r.request_uri {
             AbsolutePath(ref uri) => {
+    // println!("{}", params);
+    // let token = params.find(&"access_token");
+    // match token {
+    //     None => response_tx.send(Ok(json::from_str("err").unwrap())),
+        // Some(token) => {
+        //     println!("Starting to listen");
+        //     cmd_tx.send(wit_client::WitRequest{sender: response_tx,
+        //                                        token: token.to_string(),
+        //                                        spec: wit_client::Speech("audio/raw;encoding=unsigned-integer;bits=16;rate=8000;endian=big".to_string())});
+        //     mic_req_chan_in.send(true);
+        // }
                 let uri_vec:Vec<&str> = uri.as_slice().split('?').collect();
+
                 match uri_vec.as_slice() {
-                    ["/text", ..args] =>
-                        println!("[http] text request"),
-                        // handle_text(cmd_tx, response_tx, args[0]),
+                    ["/text", ..args] => {
+                        if args.len() == 0 {
+                            w.write("params not found (token or q)".as_bytes())
+                                .unwrap_or_else(|e| println!("could not write resp"));
+                            return;
+                        }
+
+                        let params = parse_query_params(uri_vec[1]);
+                        println!("[http] text request {}", params);
+                        let token = params.find(&"access_token");
+                        let text = params.find(&"q");
+
+                        if token.is_none() || text.is_none() {
+                            w.write("params not found (token or q)".as_bytes())
+                                .unwrap_or_else(|e| println!("could not write resp"));
+                            return;
+                        }
+
+                        let wit_rx = wit::interpret_string(&self.wit_tx,
+                                                           token.unwrap().to_string(),
+                                                           text.unwrap().to_string());
+                        let json = wit_rx.recv();
+                        println!("[http] recv from wit: {}", json);
+                        w.write(format!("{}", json.unwrap()).as_bytes()).unwrap();
+                    },
                     ["/start", ..args] => {
-                        println!("[http] start request");
                         // async Wit start
-                        let token = format!("ASAYW7NKIBW63T5LRWT2MDWLYDHGZQG7");
-                        let content_type = format!("audio/raw;encoding=unsigned-integer;bits=16;rate=8000;endian=big");
-                        wit_client::wit_speech_start(&self.wit_tx, token, content_type);
+                        if args.len() == 0 {
+                            w.write("params not found (token)".as_bytes())
+                                .unwrap_or_else(|e| println!("could not write resp"));
+                            return;
+                        }
+
+                        let params = parse_query_params(uri_vec[1]);
+                        println!("[http] start_recording request {}", params);
+                        let token = params.find(&"access_token");
+
+                        if token.is_none() {
+                            w.write("params not found (token)".as_bytes())
+                                .unwrap_or_else(|e| println!("could not write resp"));
+                            return;
+                        }
+
+                        let content_type =
+                            format!("audio/raw;encoding=unsigned-integer;bits=16;rate=8000;endian=big");
+                        wit::start_recording(&self.wit_tx,
+                                             token.unwrap().to_string(),
+                                             content_type);
                     },
                     ["/stop", ..args] => {
+                        // sync Wit stop
                         println!("[http] stop request");
-                        let wit_rx = wit_client::wit_speech_stop(&self.wit_tx);
+                        let wit_rx = wit::stop_recording(&self.wit_tx);
                         let json = wit_rx.recv();
                         println!("[http] recv from wit: {}", json);
                         w.write(format!("{}", json.unwrap()).as_bytes()).unwrap();
@@ -94,7 +150,7 @@ fn main() {
                  .as_slice())
         .unwrap_or(9877);
 
-    let wit_tx = wit_client::init();
+    let wit_tx = wit::init();
 
     let server = HttpServer {
         host: host,
