@@ -1,6 +1,6 @@
 # witd
 
-`witd` is a light executable that makes it easy to use Wit.ai on a wide range of devices. It managesclient audio recording and communication wit Wit.ai.
+`witd` is a light executable that makes it easy to use Wit.ai on a wide range of devices. It manages client audio recording and communication wit Wit.ai.
 
 ## Why?
 
@@ -69,10 +69,13 @@ The easiest way to have witd running on a Raspberry Pi is to run the provided AR
 
 The procedure below describes how to cross-compile witd-arm on a Debian host targeting Raspbian. It may work with other configurations but has not been tested yet.
 
-1. Setup a Rust cross-compiler by following [these instructions](https://github.com/npryce/rusty-pi/blob/master/doc/compile-the-compiler.asciidoc).
+1. Setup a Rust cross-compiler by following [these instructions](https://github.com/npryce/rusty-pi/blob/master/doc/compile-the-compiler.asciidoc). However, make sure to pass the extra `--enable-rpath` argument to the configure script:
+```bash
+./configure --target=arm-unknown-linux-gnueabihf --prefix=$HOME/pi-rust --enable-rpath && make && make install
+```
 2. Install the required libraries on the Raspberry Pi:
 ```bash
-pi@raspberrypi ~$ sudo apt-get install libssl-dev libcurl4-openssl-dev libcrypto++-dev
+pi@raspberrypi ~$ sudo apt-get install libssl-dev libcurl4-openssl-dev libcrypto++-dev libportaudio-dev
 ```
 3. Install sshfs so that the build script running on the host can access the precompiled libraries on the Raspberry Pi by mounting a remote filesystem:
 ```bash
