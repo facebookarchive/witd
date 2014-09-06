@@ -4,14 +4,16 @@
 
 ## Why?
 
-Wit.ai allows developers to build smart apps and devices. Developers have to do 3 things:
+Wit.ai allows developers to build smart apps and devices. By streaming end-users' voice to Wit's speech-to-action API, it is possible to determine the intent of the end users as well as all the details required to fulfill their requests.
 
-- record audio
-- stream audio to Wit
+However, developers are often in trouble when it comes to recording the audio and streaming it to Wit.ai API.
+
+We provide clients that do exactly that for iOS and Android.
+`witd` is an attempt to do the same for more devices, e.g. Raspberry Pi, BeagleBone, etc.
 
 ## How to build
 
-`witd` is written in [Rust][rust]. Build it with:
+`witd` is written in [Rust][rust]. We recommend you use [Cargo][cargo] to build it:
 
 ```bash
 $ cargo build
@@ -91,3 +93,4 @@ where `pi` is a user on the Raspberry Pi and 192.168.1.54 is the IP of the Raspb
 The resulting executable should be in `target/arm-unknown-linux-gnueabihf/witd`.
 
 [rust]: http://rust-lang.org
+[cargo]: http://crates.io
