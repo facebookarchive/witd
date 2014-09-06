@@ -39,9 +39,9 @@ fn parse_query_params<'s>(uri: &'s str) -> HashMap<&'s str, &'s str> {
     return args;
 }
 
-fn handle_text(cmd_tx: Sender<wit_client::WitRequest>, 
-               response_tx: Sender<String>, 
-               uri: &str) -> () {   
+fn handle_text(cmd_tx: Sender<wit_client::WitRequest>,
+               response_tx: Sender<String>,
+               uri: &str) -> () {
     let params = parse_query_params(uri);
     println!("{}", params);
     let token = params.find(&"access_token");
@@ -73,30 +73,10 @@ fn handle_text(cmd_tx: Sender<wit_client::WitRequest>,
     }
 }
 
-fn handle_speech_start(cmd_tx: Sender<wit_client::WitRequest>, 
-                       response_tx: Sender<Result<Json,ErrCode>>, 
-                       mic_req_chan_in: Sender<bool>,
-                       mic_reader_out: Box<io::ChanReader>,
-                       uri: &str) -> () {   
-    let params = parse_query_params(uri);
-    println!("{}", params);
-    let token = params.find(&"access_token");
-    match token {
-        None => response_tx.send(Ok(json::from_str("err").unwrap())),
-        Some(token) => {
-            println!("Starting to listen");
-            cmd_tx.send(wit_client::WitRequest{sender: response_tx,
-                                               token: token.to_string(),
-                                               spec: wit_client::Speech("audio/raw;encoding=unsigned-integer;bits=16;rate=8000;endian=big".to_string())});
-            mic_req_chan_in.send(true);
-        }
-    }
-}
 
-
-fn handle_speech_stop(rx: &Receiver<Result<Json,ErrCode>>, 
-                      response_chan_in: Sender<String>, 
-                      mic_req_chan_in: Sender<bool>) -> &Receiver<Result<Json,ErrCode>> {   
+fn handle_speech_stop(rx: &Receiver<Result<Json,ErrCode>>,
+                      response_chan_in: Sender<String>,
+                      mic_req_chan_in: Sender<bool>) -> &Receiver<Result<Json,ErrCode>> {
     mic_req_chan_in.send(false);
     match rx.recv() {
         Ok(json) => {
@@ -111,28 +91,12 @@ fn handle_speech_stop(rx: &Receiver<Result<Json,ErrCode>>,
 }
 
 fn handle_req(rx: &Receiver<Result<Json,ErrCode>>,
-              tx: Sender<Result<Json,ErrCode>>, 
-              cmd_tx: Sender<wit_client::WitRequest>, 
+              tx: Sender<Result<Json,ErrCode>>,
+              cmd_tx: Sender<wit_client::WitRequest>,
               response_tx: Sender<String>,
               wave_tx: Sender<Vec<u8>>,
               uri: String) -> &Receiver<Result<Json,ErrCode>> {
     println!("uri_parsed {}", uri);
-    let uri_vec:Vec<&str> = uri.as_slice().split('?').collect();
-    match uri_vec.as_slice() {
-        ["/text", ..args] => handle_text(cmd_tx, response_tx, args[0]),
-        ["/start", ..args] => {
-            // async response
-            response_tx.send("ok".to_string());
-            println!("Starting mic");
-            //let mic_tx:Sender<bool> = mic::init(wave_tx);
-            
-            //handle_speech_start(cmd_tx, tx, mic_req_chan_in, mic_reader_out, args[0]);
-        },
-        ["/stop", ..args] => {
-            //rx = handle_speech_stop(rx, response_chan_in, mic_req_chan_in);
-        },
-        _ => println!("Another request : {}", uri)
-    }
     return rx;
 }
 
@@ -142,16 +106,6 @@ fn job(connector_rx: Receiver<Req>, cmd_tx: Sender<wit_client::WitRequest>, wave
         //Read message from connector_chan
         let Req{response_tx: response_tx, uri: uri} = connector_rx.recv();
         println!("Receiving message in connector, will dispatch...");
-        match uri {
-            Some(req) => {
-                println!("Request coming from http: {}", req.to_string());
-                handle_req(&state_rx, state_tx.clone(), cmd_tx.clone(), response_tx, wave_tx.clone(), req);
-            },
-            None => {
-                let err = Error{code: 4, status: 400, error: "Invalid Uri".to_string()}; 
-                response_tx.send(format!("{}", json::encode(&err)));
-            }
-        }
     }
 }
 
@@ -166,4 +120,3 @@ pub fn init() -> Sender<Req> {
     });
     return connector_tx;
 }
-

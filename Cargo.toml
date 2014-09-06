@@ -1,12 +1,11 @@
 [package]
 
-name = "witd-rust"
+name = "witd"
 version = "0.0.1"
-authors = ["oliv <olivier.vaussy@gmail.com>"]
+authors = ["martin <martin@wit.ai", "oliv <oliv@wit.ai>", "willy <willy@wit.ai>"]
 
 [dependencies.http]
 git = "https://github.com/chris-morgan/rust-http"
 
 [dependencies.curl]
 git = "https://github.com/carllerche/curl-rust.git"
-

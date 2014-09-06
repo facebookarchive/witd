@@ -87,63 +87,71 @@ extern "C" fn stream_callback
          PaContinue
      }
 
-fn job(wave_tx: Sender<Vec<u8>>, mic_rx: Receiver<bool>) {
-    let mut stream: *mut PaStream = ptr::mut_null();
-    let frames_per_buffer: u32 = 32;
-    
-    let mut tx = wave_tx.clone();
-    let tx_ptr: *mut c_void = &mut tx as *mut _ as *mut c_void;
-    
-    unsafe {
-        let err = Pa_OpenDefaultStream(
-            &mut stream, 1, 1, paUInt8, 16000. as c_double, frames_per_buffer,
-            Some(stream_callback), tx_ptr);
-        if err != paNoError {
-            println!("error while opening stream: {}", err);
-        }
-    }
-    
-    loop {
-        println!("mic agent: ready to recv");
-        let r: Result<bool, ()> = mic_rx.recv_opt();
-        
-        if r.is_err() {
-            println!("mic agent: done");
-            break;
-        }
-        
-        let x = r.unwrap();
-        println!("mic agent: recv'd {}", x);
-        
-        if x == true {
-            unsafe {
-                let err = Pa_StartStream(stream);
-                    if err != paNoError {
-                        println!("error while starting stream: {}", err);
-                    }
-            };
-        } else if x == false {
-            unsafe {
-                let err = Pa_StopStream(stream);
-                if err != paNoError {
-                    println!("error while stopping stream: {}", err);
-                }
-            }
-        }
-    }
+pub fn start(tx: &Sender<bool>) {
+    tx.send(true);
 }
 
-pub fn init (wave_tx: Sender<Vec<u8>>) -> (Sender<bool>) {
-    unsafe { Pa_Initialize() };
+pub fn stop(tx: &Sender<bool>) {
+    tx.send(false);
+}
 
-    let (mic_tx, mic_rx) = channel();
+pub fn init () -> (Box<io::ChanReader>, Sender<bool>) {
+    unsafe { Pa_Initialize() };
+    let (mut tx, rx) = channel();
+    let reader = io::ChanReader::new(rx);
+
+    let (ctl_tx, ctl_rx) = channel();
 
     // spawn actor
     spawn(proc() {
-        job(wave_tx, mic_rx);
+        let mut stream: *mut PaStream = ptr::mut_null();
+        let frames_per_buffer: u32 = 32;
+
+        // let (mut tx, rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel();
+        let mut tx = tx.clone();
+        let tx_ptr: *mut c_void = &mut tx as *mut _ as *mut c_void;
+
+        unsafe {
+            let err = Pa_OpenDefaultStream(
+                &mut stream, 1, 1, paUInt8, 16000. as c_double, frames_per_buffer,
+                Some(stream_callback), tx_ptr);
+            if err != paNoError {
+                println!("error while opening stream: {}", err);
+            }
+        }
+
+        loop {
+            println!("mic agent: ready to recv");
+            let r: Result<bool, ()> = ctl_rx.recv_opt();
+
+            if r.is_err() {
+                println!("mic agent: done");
+                break;
+            }
+
+            let x = r.unwrap();
+            println!("mic agent: recv'd {}", x);
+
+            if x == true {
+                unsafe {
+                    let err = Pa_StartStream(stream);
+                    if err != paNoError {
+                        println!("error while starting stream: {}", err);
+                    }
+                };
+            } else if x == false {
+                unsafe {
+                    let err = Pa_StopStream(stream);
+                    if err != paNoError {
+                        println!("error while stopping stream: {}", err);
+                    }
+                }
+                break;
+            }
+        }
     });
 
-    return mic_tx;
+    (box reader, ctl_tx)
 }
 
 /*

@@ -1,10 +1,17 @@
 # witd
 
-`witd` is a light executable that makes it easy to use Wit.ai on a wide range of devices. It manages the audio recording and the queries to Wit.ai.
+`witd` is a light executable that makes it easy to use Wit.ai on a wide range of devices. It managesclient audio recording and communication wit Wit.ai.
+
+## Why?
+
+Wit.ai allows developers to build smart apps and devices. Developers have to do 3 things:
+
+- record audio
+- stream audio to Wit
 
 ## How to build
 
-Witd is written in [Rust][rust]. Build it with:
+`witd` is written in [Rust][rust]. Build it with:
 
 ```bash
 $ cargo build
