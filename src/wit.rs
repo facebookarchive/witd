@@ -17,12 +17,12 @@ pub enum WitCommand {
 }
 
 fn exec_request(request: Request, token: String) -> Result<Json,ErrCode> {
-    println!("[exec] start");
+    // println!("[exec] start");
     request
         .header("Authorization", format!("Bearer {}", token).as_slice())
         .header("Accept", "application/vnd.wit.20140620+json")
     .exec().map(|resp| {
-        println!("[exec] resp={}", resp);
+        // println!("[exec] resp={}", resp);
         let body = resp.get_body();
         let str = str::from_utf8(body.as_slice())
             .expect("Response was not valid UTF-8");
