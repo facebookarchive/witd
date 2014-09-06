@@ -73,7 +73,7 @@ The procedure below describes how to cross-compile witd-arm on a Debian host tar
 ```bash
 ./configure --target=arm-unknown-linux-gnueabihf --prefix=$HOME/pi-rust --enable-rpath && make && make install
 ```
-* Install the required libraries on the Raspberry Pi, and create a libportaudio.so symlink:
+* Install the required libraries on the Raspberry Pi, and create a symlink for `libportaudio`:
 ```bash
 pi@raspberrypi ~$ sudo apt-get install libssl-dev libcurl4-openssl-dev libcrypto++-dev libportaudio-dev
 pi@raspberrypi ~$ ln -s /usr/lib/arm-linux-gnueabihf/libportaudio.so.2 /usr/lib/arm-linux-gnueabihf/libportaudio.so
