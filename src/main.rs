@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::io;
 use std::io::net::ip::{SocketAddr, IpAddr, Ipv4Addr};
 use std::os;
-use getopts::{optopt,optflag,getopts,OptGroup};
+use getopts::{optopt,optflag,getopts,OptGroup,usage,short_usage};
 
 use http::server::{Config, Server, ResponseWriter};
 use http::server::request::{AbsolutePath, Request, RequestUri};
@@ -148,7 +148,8 @@ fn main() {
     let opts = [
         optflag("h", "help", "display this help message"),
         optflag("l", "list-input", "list input devices"),
-        optopt("i", "input", "select input device", "1")
+        optopt("i", "input", "select input device", "1"),
+        optopt("r", "rate", "set recording sample rate", "16000")
     ];
 
     let matches = match getopts(args.tail(), opts) {
@@ -171,9 +172,15 @@ fn main() {
     // println!("{}, {}", matches.opt_present("l"), matches.opt_strs("input"));
 
     // before Wit is initialized
-    let input: Option<int> = matches.opt_str("input").and_then(|x| from_str(x.as_slice()));
+    if matches.opt_present("help") {
+        println!("{}", usage("witd (https://wit.ai)", opts.as_slice()));
+        return;
+    }
 
-    let wit_tx = wit::init(wit::Options{input_device: input});
+    let input: Option<int> = matches.opt_str("input").and_then(|x| from_str(x.as_slice()));
+    let rate: Option<f64> = matches.opt_str("rate").and_then(|x| from_str(x.as_slice()));
+
+    let wit_tx = wit::init(wit::Options{input_device: input, sample_rate: rate});
 
     // after Wit is initialized
     if matches.opt_present("list-input") {
