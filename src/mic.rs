@@ -37,6 +37,16 @@ pub enum PaStreamCallbackResult {
     PaComplete = 1,
     PaAbort = 2
 }
+
+// Stream flags
+pub type PaStreamFlags = u64;
+pub static PaNoFlag: PaStreamFlags = 0;
+pub static PaClipOff: PaStreamFlags = 0x00000001;
+pub static PaDitherOff: PaStreamFlags = 0x00000002;
+pub static PaNeverDropInput: PaStreamFlags = 0x00000004;
+pub static PaPrimeOutputBuffersUsingStreamCallback: PaStreamFlags = 0x00000008;
+pub static PaPlatformSpecificFlags: PaStreamFlags = 0xFFFF0000;
+
 pub type PaHostApiTypeId = i32;
 pub static PaInDevelopment: PaHostApiTypeId = 0;
 pub static PaDirectSound: PaHostApiTypeId = 1;
@@ -77,6 +87,14 @@ pub struct PaDeviceInfo {
     pub default_high_output_latency: PaTime,
     pub default_sample_rate: c_double
 }
+#[repr(C)]
+pub struct PaStreamParameters {
+    pub device : PaDeviceIndex,
+    pub channel_count : i32,
+    pub sample_format : PaSampleFormat,
+    pub suggested_latency : PaTime,
+    pub host_api_specific_stream_info : *mut c_void
+}
 
 pub type PaStreamCallbackFlags = u64;
 type PaStreamCallback =
@@ -87,14 +105,30 @@ type PaStreamCallback =
 #[link(name = "portaudio")]
 extern {
     fn Pa_Initialize() -> c_void;
+    fn Pa_GetErrorText(e: PaError) -> *const c_char;
     fn Pa_GetDeviceCount() -> PaDeviceIndex;
     fn Pa_GetDeviceInfo(i: c_int) -> *const PaDeviceInfo;
     fn Pa_GetDefaultInputDevice() -> PaDeviceIndex; // PaDeviceIndex
     fn Pa_GetHostApiInfo(i: c_int) -> *const PaHostApiInfo;
+    fn Pa_OpenStream(
+        stream: *mut *mut PaStream,
+        inputParams: *const PaStreamParameters,
+        outputParams: *const PaStreamParameters,
+        sampleRate: c_double,
+        framesPerBuffer: u32,
+        streamFlags: PaStreamFlags,
+        streamCallBack: Option<PaStreamCallback>,
+        userData: *mut c_void)
+        -> PaError;
     fn Pa_OpenDefaultStream(
-        stream: *mut *mut PaStream, numInputChannels: c_int, numOutputChannels: c_int,
-        sampleFormat: PaSampleFormat, sampleRate: c_double, framesPerBuffer: u32,
-        streamCallBack: Option<PaStreamCallback>, userData: *mut c_void)
+        stream: *mut *mut PaStream,
+        numInputChannels: c_int,
+        numOutputChannels: c_int,
+        sampleFormat: PaSampleFormat,
+        sampleRate: c_double,
+        framesPerBuffer: u32,
+        streamCallBack: Option<PaStreamCallback>,
+        userData: *mut c_void)
         -> PaError;
     fn Pa_StartStream(stream: *mut PaStream) -> PaError;
     fn Pa_StopStream(stream: *mut PaStream) -> PaError;
@@ -132,54 +166,19 @@ extern "C" fn stream_callback
          PaContinue
      }
 
-pub fn start(tx: &Sender<bool>) {
-    tx.send(true);
-}
-
-pub fn stop(tx: &Sender<bool>) {
-    tx.send(false);
-}
-
-unsafe fn device_to_string(info: *const PaDeviceInfo) -> String {
-    // device name
-    let c_str_name = c_str::CString::new((*info).name, false);
-    let name_opt = c_str_name.as_str();
-    let name = name_opt.unwrap_or("none");
-
-    // api name
-    let api = Pa_GetHostApiInfo((*info).host_api);
-    let c_str_api = c_str::CString::new((*api).name, false);
-    let api_name_opt = c_str_api.as_str();
-    let api_name = api_name_opt.unwrap_or("none");
-    format!("\"{}\", host_api: \"{}\"", name, api_name)
-}
-
-pub fn init () -> (Box<io::ChanReader>, Sender<bool>) {
-    unsafe { Pa_Initialize() };
-
-    let n_devices = unsafe { Pa_GetDeviceCount() };
-
-    println!("[mic] detected {} devices", n_devices);
-
-    for i in range(0, n_devices) {
-        unsafe {
-            let info = Pa_GetDeviceInfo(i);
-            println!("[mic] device #{}: {}", i, device_to_string(info));
-        }
-    }
-
+fn print_err(tag: &str, err: PaError) {
     unsafe {
-        let def = Pa_GetDefaultInputDevice();
-        let info = Pa_GetDeviceInfo(def);
-        println!("[mic] using default device (#{}: {})", def, device_to_string(info));
+        let msg = c_str::CString::new(Pa_GetErrorText(err), false);
+        println!("[mic] {}: {}", tag, msg.as_str().unwrap_or("unk"));
     }
+}
 
+pub fn start(input_device: Option<int>) -> (Box<io::ChanReader>, Sender<bool>) {
     let (mut tx, rx) = channel();
     let reader = io::ChanReader::new(rx);
 
     let (ctl_tx, ctl_rx) = channel();
 
-    // spawn actor
     spawn(proc() {
         let mut stream: *mut PaStream = ptr::mut_null();
         let frames_per_buffer: u32 = 32;
@@ -189,11 +188,31 @@ pub fn init () -> (Box<io::ChanReader>, Sender<bool>) {
         let tx_ptr: *mut c_void = &mut tx as *mut _ as *mut c_void;
 
         unsafe {
-            let err = Pa_OpenDefaultStream(
-                &mut stream, 1, 1, paUInt8, 16000. as c_double, frames_per_buffer,
-                Some(stream_callback), tx_ptr);
-            if err != paNoError {
-                println!("error while opening stream: {}", err);
+            if input_device.is_none() {
+                println!("[mic] using default device");
+                let err = Pa_OpenDefaultStream(
+                    &mut stream, 1, 1, paUInt8, 16000. as c_double, frames_per_buffer,
+                    Some(stream_callback), tx_ptr);
+                if err != paNoError {
+                    print_err("error while opening stream", err);
+                }
+            } else {
+                println!("[mic] using device #{}", input_device.unwrap());
+                let in_params = PaStreamParameters {
+                    device: input_device.unwrap() as i32,
+                    sample_format: paUInt8,
+                    channel_count: 1 as i32,
+                    suggested_latency: 5. as f64,
+                    host_api_specific_stream_info: ptr::mut_null()
+                };
+
+                let err = Pa_OpenStream(
+                    &mut stream, &in_params, ptr::null(),
+                    16000. as c_double, frames_per_buffer, 0,
+                    Some(stream_callback), tx_ptr);
+                if err != paNoError {
+                    print_err("error while opening stream", err);
+                }
             }
         }
 
@@ -213,14 +232,14 @@ pub fn init () -> (Box<io::ChanReader>, Sender<bool>) {
                 unsafe {
                     let err = Pa_StartStream(stream);
                     if err != paNoError {
-                        println!("error while starting stream: {}", err);
+                        print_err("error while starting stream", err);
                     }
                 };
             } else if x == false {
                 unsafe {
                     let err = Pa_StopStream(stream);
                     if err != paNoError {
-                        println!("error while stopping stream: {}", err);
+                        print_err("error while stopping stream", err);
                     }
                 }
                 break;
@@ -228,7 +247,51 @@ pub fn init () -> (Box<io::ChanReader>, Sender<bool>) {
         }
     });
 
+    ctl_tx.send(true);
+
     (box reader, ctl_tx)
+}
+
+pub fn stop(tx: &Sender<bool>) {
+    tx.send(false);
+}
+
+unsafe fn device_to_string(info: *const PaDeviceInfo) -> String {
+    // device name
+    let c_str_name = c_str::CString::new((*info).name, false);
+    let name_opt = c_str_name.as_str();
+    let name = name_opt.unwrap_or("none");
+
+    // api name
+    let api = Pa_GetHostApiInfo((*info).host_api);
+    let c_str_api = c_str::CString::new((*api).name, false);
+    let api_name_opt = c_str_api.as_str();
+    let api_name = api_name_opt.unwrap_or("none");
+
+    format!("\"{}\", host_api: \"{}\"", name, api_name)
+}
+
+pub fn list_devices() {
+    let n_devices = unsafe { Pa_GetDeviceCount() };
+
+    println!("[mic] detected {} devices", n_devices);
+
+    for i in range(0, n_devices) {
+        unsafe {
+            let info = Pa_GetDeviceInfo(i);
+            println!("[mic] device #{}: {}", i, device_to_string(info));
+        }
+    }
+
+    unsafe {
+        let def = Pa_GetDefaultInputDevice();
+        let info = Pa_GetDeviceInfo(def);
+        println!("[mic] using default device (#{}: {})", def, device_to_string(info));
+    }
+}
+
+pub fn init (/*args: &[String]*/) {
+    unsafe { Pa_Initialize() };
 }
 
 /*

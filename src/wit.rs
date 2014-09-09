@@ -22,6 +22,15 @@ pub enum RequestError {
     NetworkError(ErrCode)
 }
 
+pub struct State {
+    http: Receiver<Result<Json,RequestError>>,
+    mic: Sender<bool>,
+}
+
+pub struct Options {
+    pub input_device: Option<int>
+}
+
 fn exec_request(request: Request, token: String) -> Result<Json,RequestError> {
     // println!("[exec] start");
     request
@@ -82,16 +91,25 @@ pub fn stop_recording(ctl: &Sender<WitCommand>) -> Receiver<Result<Json,RequestE
     return result_rx
 }
 
-pub fn init() -> Sender<WitCommand>{
+pub fn list_devices() {
+    mic::list_devices();
+}
+
+pub fn init(opts: Options) -> Sender<WitCommand>{
+    mic::init();
+
     let (cmd_tx, cmd_rx): (Sender<WitCommand>, Receiver<WitCommand>) = channel();
 
     println!("[wit] init");
 
     spawn(proc() {
-        let mut ongoing: Option<(Receiver<Result<Json,RequestError>>, Sender<bool>)> = None;
+        let mut ongoing: Option<State> = None;
         loop {
-            let cmd = cmd_rx.recv();
-            ongoing = match cmd {
+            let cmd = cmd_rx.recv_opt();
+            if cmd.is_err() {
+                break;
+            }
+            ongoing = match cmd.unwrap() {
                 Text(token, text, result_tx) => {
                     let r = do_message_request(text, token);
                     result_tx.send(r);
@@ -100,8 +118,7 @@ pub fn init() -> Sender<WitCommand>{
                 Start(token, content_type) => {
                     if ongoing.is_none() {
                         let (http_tx, http_rx) = channel();
-                        let (mut reader, ctl_tx) = mic::init();
-                        mic::start(&ctl_tx);
+                        let (mut reader, mic_tx) = mic::start(opts.input_device);
 
                         spawn(proc() {
                             let mut reader_ref = &mut *reader;
@@ -109,7 +126,10 @@ pub fn init() -> Sender<WitCommand>{
                             http_tx.send(foo);
                         });
 
-                        Some((http_rx, ctl_tx))
+                        Some(State {
+                            http: http_rx,
+                            mic: mic_tx,
+                        })
                     } else {
                         ongoing
                     }
@@ -119,11 +139,9 @@ pub fn init() -> Sender<WitCommand>{
                         println!("[wit] trying to stop but no request started");
                         None
                     } else {
-                        let tuple = ongoing.as_ref().unwrap();
-                        let http_rx = tuple.ref0();
-                        let ctl_tx = tuple.ref1();
+                        let State { http: http_rx, mic: mic_tx } = ongoing.unwrap();
 
-                        mic::stop(ctl_tx);
+                        mic::stop(&mic_tx);
                         let foo = http_rx.recv();
                         result_tx.send(foo);
 

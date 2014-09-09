@@ -3,10 +3,13 @@ extern crate curl;
 extern crate http;
 extern crate url;
 extern crate serialize;
+extern crate getopts;
 use std::collections::HashMap;
 use std::io;
 use std::io::net::ip::{SocketAddr, IpAddr, Ipv4Addr};
 use std::os;
+use getopts::{optopt,optflag,getopts,OptGroup};
+
 use http::server::{Config, Server, ResponseWriter};
 use http::server::request::{AbsolutePath, Request, RequestUri};
 use http::status::{BadRequest, MethodNotAllowed, InternalServerError};
@@ -134,20 +137,49 @@ impl Server for HttpServer {
     }
 }
 
+fn print_usage() {
+
+}
+
 fn main() {
+    let args = os::args();
+    let program = args[0].clone();
+
+    let opts = [
+        optflag("h", "help", "display this help message"),
+        optflag("l", "list-input", "list input devices"),
+        optopt("i", "input", "select input device", "1")
+    ];
+
+    let matches = match getopts(args.tail(), opts) {
+        Ok(m) => m,
+        Err(f) => fail!(f.to_string())
+    };
+
     let host: IpAddr =
-        from_str(os::getenv("HOST")
+        from_str(os::getenv("WITD_HOST")
                  .unwrap_or("0.0.0.0".to_string())
                  .as_slice())
         .unwrap_or(Ipv4Addr(0,0,0,0));
 
     let port: u16 =
-        from_str(os::getenv("PORT")
+        from_str(os::getenv("WITD_PORT")
                  .unwrap_or("9877".to_string())
                  .as_slice())
         .unwrap_or(9877);
 
-    let wit_tx = wit::init();
+    println!("{}, {}", matches.opt_present("l"), matches.opt_strs("input"));
+
+    // before Wit is initialized
+    let input: Option<int> = matches.opt_str("input").and_then(|x| from_str(x.as_slice()));
+
+    let wit_tx = wit::init(wit::Options{input_device: input});
+
+    // after Wit is initialized
+    if matches.opt_present("list-input") {
+        wit::list_devices();
+        return;
+    }
 
     let server = HttpServer {
         host: host,
