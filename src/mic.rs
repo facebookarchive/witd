@@ -111,7 +111,8 @@ extern {
     fn Pa_GetErrorText(e: PaError) -> *const c_char;
     fn Pa_GetDeviceCount() -> PaDeviceIndex;
     fn Pa_GetDeviceInfo(i: c_int) -> *const PaDeviceInfo;
-    fn Pa_GetDefaultInputDevice() -> PaDeviceIndex; // PaDeviceIndex
+    fn Pa_GetDefaultHostApi() -> PaHostApiIndex;
+    fn Pa_GetDefaultInputDevice() -> PaDeviceIndex;
     fn Pa_GetHostApiInfo(i: c_int) -> *const PaHostApiInfo;
     fn Pa_GetVersionText() -> *const c_char;
     fn Pa_OpenStream(
@@ -198,7 +199,7 @@ pub fn start(input_device: Option<int>, sample_rate: Option<f64>)
 
                 println!("[mic] using default device, rate={}", rate);
                 let err = Pa_OpenDefaultStream(
-                    &mut stream, 1, 1, paUInt8, rate, frames_per_buffer,
+                    &mut stream, 1, 0, paUInt8, rate, frames_per_buffer,
                     Some(stream_callback), tx_ptr);
                 if err != paNoError {
                     print_err("error while opening stream", err);
@@ -207,7 +208,9 @@ pub fn start(input_device: Option<int>, sample_rate: Option<f64>)
                 let idx = input_device.unwrap();
                 let info = Pa_GetDeviceInfo(idx as i32);
                 let rate: c_double = sample_rate.unwrap_or((*info).default_sample_rate) as c_double;
-                let latency: c_double = (*info).default_high_input_latency;
+                let latency: c_double = (*info).default_low_input_latency;
+                let max_in: i32 = (*info).max_input_channels;
+                let max_out: i32 = (*info).max_output_channels;
                 let in_params = PaStreamParameters {
                     device: idx as i32,
                     sample_format: paUInt8,
@@ -216,8 +219,9 @@ pub fn start(input_device: Option<int>, sample_rate: Option<f64>)
                     host_api_specific_stream_info: ptr::mut_null()
                 };
 
-                println!("[mic] using device #{}, rate={}",
-                         input_device.unwrap(), rate);
+                println!("[mic] using device #{}, rate={}, max_in={}, max_out={}",
+                         input_device.unwrap(), rate, max_in, max_out);
+
 
                 let err = Pa_OpenStream(
                     &mut stream, &in_params, ptr::null(), rate,
@@ -280,8 +284,11 @@ unsafe fn device_to_string(info: *const PaDeviceInfo) -> String {
     let c_str_api = c_str::CString::new((*api).name, false);
     let api_name_opt = c_str_api.as_str();
     let api_name = api_name_opt.unwrap_or("none");
+    let max_in: i32 = (*info).max_input_channels;
+    let max_out: i32 = (*info).max_output_channels;
 
-    format!("\"{}\", host_api: \"{}\"", name, api_name)
+    format!("\"{}\", host_api: \"{}\", max_in: {}, max_out: {}",
+            name, api_name, max_in, max_out)
 }
 
 pub fn list_devices() {
@@ -299,7 +306,13 @@ pub fn list_devices() {
     unsafe {
         let def = Pa_GetDefaultInputDevice();
         let info = Pa_GetDeviceInfo(def);
+        let api_def = Pa_GetDefaultHostApi();
+        let api_info = Pa_GetHostApiInfo(api_def);
+        let api_name = c_str::CString::new((*api_info).name, false);
+        let api_type = (*api_info).host_type;
         println!("[mic] using default device (#{}: {})", def, device_to_string(info));
+        println!("[mic] using default host api #{}: name={} type={}",
+                 def, api_name, api_type);
     }
 }
 

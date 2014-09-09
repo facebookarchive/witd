@@ -33,14 +33,14 @@ pub struct Options {
 }
 
 fn exec_request(request: Request, token: String) -> Result<Json,RequestError> {
-    // println!("[exec] start");
+    // println!("[http] starting request");
     request
         .header("Authorization", format!("Bearer {}", token).as_slice())
         .header("Accept", "application/vnd.wit.20140620+json")
         .exec()
         .map_err(|e| NetworkError(e))
         .and_then(|x| {
-            // println!("[exec] resp={}", x);
+            // println!("[http] wit resp={}", x);
             let body = x.get_body();
             let str = str::from_utf8(body.as_slice()).expect("Response was not valid UTF-8");
             let obj = json::from_str(str);
