@@ -9,6 +9,7 @@ use std::io::net::ip::{SocketAddr, IpAddr, Ipv4Addr};
 use std::os;
 use http::server::{Config, Server, ResponseWriter};
 use http::server::request::{AbsolutePath, Request, RequestUri};
+use http::status::{BadRequest, MethodNotAllowed, InternalServerError};
 use http::headers::content_type::MediaType;
 use self::curl::ErrCode;
 use serialize::json;
@@ -83,7 +84,12 @@ impl Server for HttpServer {
                                                            text.unwrap().to_string());
                         let json = wit_rx.recv();
                         println!("[http] recv from wit: {}", json);
-                        w.write(format!("{}", json.unwrap()).as_bytes()).unwrap();
+                        if json.is_err() {
+                            w.status = InternalServerError;
+                            w.write(b"something went wrong, sowwy!");
+                        } else {
+                            w.write(format!("{}", json.unwrap()).as_bytes()).unwrap();
+                        }
                     },
                     ["/start", ..args] => {
                         // async Wit start
@@ -113,7 +119,12 @@ impl Server for HttpServer {
                         let wit_rx = wit::stop_recording(&self.wit_tx);
                         let json = wit_rx.recv();
                         println!("[http] recv from wit: {}", json);
-                        w.write(format!("{}", json.unwrap()).as_bytes()).unwrap();
+                        if json.is_err() {
+                            w.status = InternalServerError;
+                            w.write(b"something went wrong, sowwy!");
+                        } else {
+                            w.write(format!("{}", json.unwrap()).as_bytes()).unwrap();
+                        }
                     },
                     _ => println!("unk uri: {}", uri)
                 }
