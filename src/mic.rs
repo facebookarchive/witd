@@ -204,11 +204,13 @@ pub fn start(input_device: Option<int>, sample_rate: Option<f64>)
             } else {
                 println!("[mic] using device #{}, rate={}",
                          input_device.unwrap(), rate);
+                let info = Pa_GetDeviceInfo(input_device.unwrap() as i32);
+                let latency: c_double = (*info).default_high_input_latency;
                 let in_params = PaStreamParameters {
                     device: input_device.unwrap() as i32,
                     sample_format: paUInt8,
                     channel_count: 1 as i32,
-                    suggested_latency: 5. as f64,
+                    suggested_latency: latency,
                     host_api_specific_stream_info: ptr::mut_null()
                 };
 
