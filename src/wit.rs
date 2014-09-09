@@ -29,7 +29,7 @@ pub struct State {
 
 pub struct Options {
     pub input_device: Option<int>,
-    pub sample_rate: Option<f32>
+    pub sample_rate: Option<f64>
 }
 
 fn exec_request(request: Request, token: String) -> Result<Json,RequestError> {
