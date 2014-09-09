@@ -178,7 +178,7 @@ fn main() {
     }
 
     let input: Option<int> = matches.opt_str("input").and_then(|x| from_str(x.as_slice()));
-    let rate: Option<f64> = matches.opt_str("rate").and_then(|x| from_str(x.as_slice()));
+    let rate: Option<f32> = matches.opt_str("rate").and_then(|x| from_str(x.as_slice()));
 
     let wit_tx = wit::init(wit::Options{input_device: input, sample_rate: rate});
 

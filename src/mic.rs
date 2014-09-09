@@ -176,7 +176,7 @@ fn print_err(tag: &str, err: PaError) {
     }
 }
 
-pub fn start(input_device: Option<int>, sample_rate: Option<f64>)
+pub fn start(input_device: Option<int>, sample_rate: Option<f32>)
              -> (Box<io::ChanReader>, Sender<bool>) {
     let (mut tx, rx) = channel();
     let reader = io::ChanReader::new(rx);
