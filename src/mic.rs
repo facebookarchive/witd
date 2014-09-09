@@ -1,10 +1,11 @@
 extern crate libc;
 
-use std::{c_vec, ptr, mem, io, sync, time};
-use self::libc::{c_void, c_int, c_long, c_double, size_t, malloc};
+use std::{c_str, c_vec, fmt, io, mem, ptr, sync, time};
+use self::libc::{c_void, c_char, c_int, c_long, c_double, size_t, malloc};
 
 type PaDeviceIndex = c_int;
 type PaError = c_int;
+type PaHostApiIndex = i32;
 static paNoError: c_int = 0;
 
 /*
@@ -36,6 +37,47 @@ pub enum PaStreamCallbackResult {
     PaComplete = 1,
     PaAbort = 2
 }
+pub type PaHostApiTypeId = i32;
+pub static PaInDevelopment: PaHostApiTypeId = 0;
+pub static PaDirectSound: PaHostApiTypeId = 1;
+pub static PaMME: PaHostApiTypeId = 2;
+pub static PaASIO: PaHostApiTypeId = 3;
+pub static PaSoundManager: PaHostApiTypeId = 4;
+pub static PaCoreAudio: PaHostApiTypeId = 5;
+pub static PaOSS: PaHostApiTypeId = 7;
+pub static PaALSA: PaHostApiTypeId = 8;
+pub static PaAL: PaHostApiTypeId = 9;
+pub static PaBeOS: PaHostApiTypeId = 10;
+pub static PaWDMKS: PaHostApiTypeId = 11;
+pub static PaJACK: PaHostApiTypeId = 12;
+pub static PaWASAPI: PaHostApiTypeId = 13;
+pub static PaAudioScienceHPI: PaHostApiTypeId = 14;
+
+/// A structure containing information about a particular host API.
+#[repr(C)]
+pub struct PaHostApiInfo {
+    pub struct_version: i32,
+    pub host_type: i32,
+    pub name: *const c_char,
+    pub device_count: i32,
+    pub default_input_device: i32,
+    pub default_output_device: i32
+}
+#[repr(C)]
+#[deriving(Clone, PartialEq, PartialOrd)]
+pub struct PaDeviceInfo {
+    pub struct_version: i32,
+    pub name: *const c_char,
+    pub host_api: PaHostApiIndex,
+    pub max_input_channels: i32,
+    pub max_output_channels: i32,
+    pub default_low_input_latency: PaTime,
+    pub default_low_output_latency: PaTime,
+    pub default_high_input_latency: PaTime,
+    pub default_high_output_latency: PaTime,
+    pub default_sample_rate: c_double
+}
+
 pub type PaStreamCallbackFlags = u64;
 type PaStreamCallback =
     extern "C" fn(*const c_void, *mut c_void, u32,
@@ -45,7 +87,10 @@ type PaStreamCallback =
 #[link(name = "portaudio")]
 extern {
     fn Pa_Initialize() -> c_void;
+    fn Pa_GetDeviceCount() -> PaDeviceIndex;
+    fn Pa_GetDeviceInfo(i: c_int) -> PaDeviceInfo;
     fn Pa_GetDefaultInputDevice() -> PaDeviceIndex; // PaDeviceIndex
+    fn Pa_GetHostApiInfo(i: c_int) -> PaHostApiInfo;
     fn Pa_OpenDefaultStream(
         stream: *mut *mut PaStream, numInputChannels: c_int, numOutputChannels: c_int,
         sampleFormat: PaSampleFormat, sampleRate: c_double, framesPerBuffer: u32,
@@ -97,6 +142,30 @@ pub fn stop(tx: &Sender<bool>) {
 
 pub fn init () -> (Box<io::ChanReader>, Sender<bool>) {
     unsafe { Pa_Initialize() };
+
+    let n_devices = unsafe { Pa_GetDeviceCount() };
+
+    println!("[mic] detected {} devices", n_devices);
+
+    for i in range(0, n_devices) {
+        unsafe {
+            let info = Pa_GetDeviceInfo(i);
+
+            // device name
+            let c_str_name = c_str::CString::new(info.name, false);
+            let name_opt = c_str_name.as_str();
+            let name = name_opt.unwrap_or("none");
+            println!("name! {}", name);
+
+            // api name
+            let api = Pa_GetHostApiInfo(info.host_api);
+            let c_str_api = c_str::CString::new(api.name, false);
+            let api_name_opt = c_str_api.as_str();
+            let api_name = api_name_opt.unwrap_or("none");
+            println!("[mic] device #{}: \"{}\", host_api: \"{}\"", i, name, api_name);
+        }
+    }
+
     let (mut tx, rx) = channel();
     let reader = io::ChanReader::new(rx);
 
