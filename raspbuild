@@ -1,4 +1,7 @@
 #!/bin/bash
+
+set -x -e
+
 PLATFORM="arm-linux-gnueabihf"
 SSH_PORT=22
 declare -a paths=("/usr/lib/$PLATFORM" "/lib/$PLATFORM")
@@ -15,12 +18,15 @@ then
   SSH_PORT="$2"
 fi
 
-for d in "${paths[@]}"
-do
+for d in "${paths[@]}"; do
+  if ! [ -d $d ]; then
     echo "Mounting $d..."
     sudo mkdir $d
     sudo chmod 755 $d
     sudo sshfs -p $SSH_PORT $1:$d $d -o allow_other
+  else
+    echo "$d already exists"
+  fi
 done
 
 echo "Compiling..."
@@ -34,4 +40,3 @@ do
 done
 
 echo "All done."
-
