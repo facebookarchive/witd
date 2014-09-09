@@ -176,7 +176,7 @@ fn print_err(tag: &str, err: PaError) {
     }
 }
 
-pub fn start(input_device: Option<int>, sample_rate: Option<f32>)
+pub fn start(input_device: Option<int>, sample_rate: Option<f64>)
              -> (Box<io::ChanReader>, Sender<bool>) {
     let (mut tx, rx) = channel();
     let reader = io::ChanReader::new(rx);
@@ -190,10 +190,11 @@ pub fn start(input_device: Option<int>, sample_rate: Option<f32>)
         // let (mut tx, rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel();
         let mut tx = tx.clone();
         let tx_ptr: *mut c_void = &mut tx as *mut _ as *mut c_void;
-        let rate: c_double = sample_rate.unwrap_or(16000.) as c_double;
 
         unsafe {
             if input_device.is_none() {
+                let rate: c_double = sample_rate.unwrap_or(16000.) as c_double;
+
                 println!("[mic] using default device, rate={}", rate);
                 let err = Pa_OpenDefaultStream(
                     &mut stream, 1, 1, paUInt8, rate, frames_per_buffer,
@@ -202,9 +203,8 @@ pub fn start(input_device: Option<int>, sample_rate: Option<f32>)
                     print_err("error while opening stream", err);
                 }
             } else {
-                println!("[mic] using device #{}, rate={}",
-                         input_device.unwrap(), rate);
                 let info = Pa_GetDeviceInfo(input_device.unwrap() as i32);
+                let rate: c_double = sample_rate.unwrap_or((*info).default_sample_rate) as c_double;
                 let latency: c_double = (*info).default_high_input_latency;
                 let in_params = PaStreamParameters {
                     device: input_device.unwrap() as i32,
@@ -214,13 +214,10 @@ pub fn start(input_device: Option<int>, sample_rate: Option<f32>)
                     host_api_specific_stream_info: ptr::mut_null()
                 };
 
-                let mut err = Pa_IsFormatSupported(&in_params, ptr::null(), rate);
-                if err != paNoError {
-                    print_err("error: format not supported", err);
-                    return;
-                }
+                println!("[mic] using device #{}, rate={}",
+                         input_device.unwrap(), rate);
 
-                err = Pa_OpenStream(
+                let err = Pa_OpenStream(
                     &mut stream, &in_params, ptr::null(), rate,
                     frames_per_buffer, 0,
                     Some(stream_callback), tx_ptr);
