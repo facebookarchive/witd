@@ -1,7 +1,7 @@
 extern crate libc;
 
 use std::{c_str, c_vec, fmt, io, mem, ptr, sync, time};
-use self::libc::{c_void, c_char, c_int, c_long, c_double, size_t, malloc};
+use self::libc::{c_void, c_double, c_char, c_int, c_long, c_ulong, size_t, malloc};
 
 type PaDeviceIndex = c_int;
 type PaError = c_int;
@@ -98,7 +98,7 @@ pub struct PaStreamParameters {
 
 pub type PaStreamCallbackFlags = u64;
 type PaStreamCallback =
-    extern "C" fn(*const c_void, *mut c_void, u32,
+    extern "C" fn(*const c_void, *mut c_void, c_ulong,
                   *const PaStreamCallbackTimeInfo,
                   PaStreamCallbackFlags, *mut c_void) -> PaStreamCallbackResult;
 
@@ -113,12 +113,13 @@ extern {
     fn Pa_GetDeviceInfo(i: c_int) -> *const PaDeviceInfo;
     fn Pa_GetDefaultInputDevice() -> PaDeviceIndex; // PaDeviceIndex
     fn Pa_GetHostApiInfo(i: c_int) -> *const PaHostApiInfo;
+    fn Pa_GetVersionText() -> *const c_char;
     fn Pa_OpenStream(
         stream: *mut *mut PaStream,
         inputParams: *const PaStreamParameters,
         outputParams: *const PaStreamParameters,
         sampleRate: c_double,
-        framesPerBuffer: u32,
+        framesPerBuffer: c_ulong,
         streamFlags: PaStreamFlags,
         streamCallBack: Option<PaStreamCallback>,
         userData: *mut c_void)
@@ -129,13 +130,13 @@ extern {
         numOutputChannels: c_int,
         sampleFormat: PaSampleFormat,
         sampleRate: c_double,
-        framesPerBuffer: u32,
+        framesPerBuffer: c_ulong,
         streamCallBack: Option<PaStreamCallback>,
         userData: *mut c_void)
         -> PaError;
     fn Pa_StartStream(stream: *mut PaStream) -> PaError;
     fn Pa_StopStream(stream: *mut PaStream) -> PaError;
-    fn Pa_ReadStream(stream: *mut PaStream, buffer: *mut c_void, frames: u32) -> PaError;
+    fn Pa_ReadStream(stream: *mut PaStream, buffer: *mut c_void, frames: c_ulong) -> PaError;
     fn Pa_Sleep(msec: c_long) -> c_void;
 }
 
@@ -146,10 +147,10 @@ struct MicState {
 
 extern "C" fn stream_callback
     (input: *const c_void, output: *mut c_void,
-     frame_count: u32, info: *const PaStreamCallbackTimeInfo,
+     frame_count: c_ulong, info: *const PaStreamCallbackTimeInfo,
      flags: PaStreamCallbackFlags, data: *mut c_void)
      -> PaStreamCallbackResult {
-         println!("rx {} frames", frame_count);
+         // println!("rx {} frames", frame_count);
 
          let c_bytes: c_vec::CVec<u8> = unsafe {
              c_vec::CVec::new(input as *mut u8, frame_count as uint)
@@ -160,10 +161,10 @@ extern "C" fn stream_callback
              &mut *(data as *mut Sender<Vec<u8>>)
          };
 
-         println!("tx addr: {:p}, bytes len: {}", tx, bytes.len())
+         // println!("tx addr: {:p}, bytes len: {}", tx, bytes.len())
          let result = tx.send_opt(bytes);
          if result.is_err() {
-             println!("error while sending: {}", result.err());
+             println!("[mic] error while sending: {}", result.err());
          }
 
          PaContinue
@@ -185,7 +186,7 @@ pub fn start(input_device: Option<int>, sample_rate: Option<f64>)
 
     spawn(proc() {
         let mut stream: *mut PaStream = ptr::mut_null();
-        let frames_per_buffer: u32 = 32;
+        let frames_per_buffer: c_ulong = 32 as c_ulong;
 
         // let (mut tx, rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel();
         let mut tx = tx.clone();
@@ -203,11 +204,12 @@ pub fn start(input_device: Option<int>, sample_rate: Option<f64>)
                     print_err("error while opening stream", err);
                 }
             } else {
-                let info = Pa_GetDeviceInfo(input_device.unwrap() as i32);
+                let idx = input_device.unwrap();
+                let info = Pa_GetDeviceInfo(idx as i32);
                 let rate: c_double = sample_rate.unwrap_or((*info).default_sample_rate) as c_double;
                 let latency: c_double = (*info).default_high_input_latency;
                 let in_params = PaStreamParameters {
-                    device: input_device.unwrap() as i32,
+                    device: idx as i32,
                     sample_format: paUInt8,
                     channel_count: 1 as i32,
                     suggested_latency: latency,
@@ -302,7 +304,11 @@ pub fn list_devices() {
 }
 
 pub fn init (/*args: &[String]*/) {
-    unsafe { Pa_Initialize() };
+    unsafe {
+        Pa_Initialize();
+        let c_str = c_str::CString::new(Pa_GetVersionText(), false);
+        println!("[mic] using portaudio: {}", c_str);
+    };
 }
 
 /*

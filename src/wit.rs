@@ -40,7 +40,7 @@ fn exec_request(request: Request, token: String) -> Result<Json,RequestError> {
         .exec()
         .map_err(|e| NetworkError(e))
         .and_then(|x| {
-            // println!("[exec] resp={}", resp);
+            // println!("[exec] resp={}", x);
             let body = x.get_body();
             let str = str::from_utf8(body.as_slice()).expect("Response was not valid UTF-8");
             let obj = json::from_str(str);
@@ -106,6 +106,7 @@ pub fn init(opts: Options) -> Sender<WitCommand>{
     spawn(proc() {
         let mut ongoing: Option<State> = None;
         loop {
+            println!("[wit] ready. state={}", if ongoing.is_none() {"no"} else {"yes"});
             let cmd = cmd_rx.recv_opt();
             if cmd.is_err() {
                 break;
