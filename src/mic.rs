@@ -149,7 +149,7 @@ extern "C" fn stream_callback
      frame_count: u32, info: *const PaStreamCallbackTimeInfo,
      flags: PaStreamCallbackFlags, data: *mut c_void)
      -> PaStreamCallbackResult {
-         // println!("rx {} frames", frame_count);
+         println!("rx {} frames", frame_count);
 
          let c_bytes: c_vec::CVec<u8> = unsafe {
              c_vec::CVec::new(input as *mut u8, frame_count as uint)
@@ -160,7 +160,7 @@ extern "C" fn stream_callback
              &mut *(data as *mut Sender<Vec<u8>>)
          };
 
-         // println!("tx addr: {:p}, bytes len: {}", tx, bytes.len())
+         println!("tx addr: {:p}, bytes len: {}", tx, bytes.len())
          let result = tx.send_opt(bytes);
          if result.is_err() {
              println!("error while sending: {}", result.err());
