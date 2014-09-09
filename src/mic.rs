@@ -176,7 +176,8 @@ fn print_err(tag: &str, err: PaError) {
     }
 }
 
-pub fn start(input_device: Option<int>) -> (Box<io::ChanReader>, Sender<bool>) {
+pub fn start(input_device: Option<int>, sample_rate: Option<f64>)
+             -> (Box<io::ChanReader>, Sender<bool>) {
     let (mut tx, rx) = channel();
     let reader = io::ChanReader::new(rx);
 
@@ -189,19 +190,20 @@ pub fn start(input_device: Option<int>) -> (Box<io::ChanReader>, Sender<bool>) {
         // let (mut tx, rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel();
         let mut tx = tx.clone();
         let tx_ptr: *mut c_void = &mut tx as *mut _ as *mut c_void;
+        let rate: c_double = sample_rate.unwrap_or(16000.) as c_double;
 
         unsafe {
             if input_device.is_none() {
-                println!("[mic] using default device");
+                println!("[mic] using default device, rate={}", rate);
                 let err = Pa_OpenDefaultStream(
-                    &mut stream, 1, 1, paUInt8, 16000. as c_double, frames_per_buffer,
+                    &mut stream, 1, 1, paUInt8, rate, frames_per_buffer,
                     Some(stream_callback), tx_ptr);
                 if err != paNoError {
                     print_err("error while opening stream", err);
                 }
             } else {
-                println!("[mic] using device #{}", input_device.unwrap());
-                let rate = 16000. as c_double;
+                println!("[mic] using device #{}, rate={}",
+                         input_device.unwrap(), rate);
                 let in_params = PaStreamParameters {
                     device: input_device.unwrap() as i32,
                     sample_format: paUInt8,

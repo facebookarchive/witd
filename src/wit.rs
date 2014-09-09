@@ -28,7 +28,8 @@ pub struct State {
 }
 
 pub struct Options {
-    pub input_device: Option<int>
+    pub input_device: Option<int>,
+    pub sample_rate: Option<f64>
 }
 
 fn exec_request(request: Request, token: String) -> Result<Json,RequestError> {
@@ -118,7 +119,7 @@ pub fn init(opts: Options) -> Sender<WitCommand>{
                 Start(token, content_type) => {
                     if ongoing.is_none() {
                         let (http_tx, http_rx) = channel();
-                        let (mut reader, mic_tx) = mic::start(opts.input_device);
+                        let (mut reader, mic_tx) = mic::start(opts.input_device, opts.sample_rate);
 
                         spawn(proc() {
                             let mut reader_ref = &mut *reader;
