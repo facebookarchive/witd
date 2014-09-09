@@ -88,9 +88,9 @@ type PaStreamCallback =
 extern {
     fn Pa_Initialize() -> c_void;
     fn Pa_GetDeviceCount() -> PaDeviceIndex;
-    fn Pa_GetDeviceInfo(i: c_int) -> PaDeviceInfo;
+    fn Pa_GetDeviceInfo(i: c_int) -> *const PaDeviceInfo;
     fn Pa_GetDefaultInputDevice() -> PaDeviceIndex; // PaDeviceIndex
-    fn Pa_GetHostApiInfo(i: c_int) -> PaHostApiInfo;
+    fn Pa_GetHostApiInfo(i: c_int) -> *const PaHostApiInfo;
     fn Pa_OpenDefaultStream(
         stream: *mut *mut PaStream, numInputChannels: c_int, numOutputChannels: c_int,
         sampleFormat: PaSampleFormat, sampleRate: c_double, framesPerBuffer: u32,
@@ -140,6 +140,20 @@ pub fn stop(tx: &Sender<bool>) {
     tx.send(false);
 }
 
+unsafe fn device_to_string(info: *const PaDeviceInfo) -> String {
+    // device name
+    let c_str_name = c_str::CString::new((*info).name, false);
+    let name_opt = c_str_name.as_str();
+    let name = name_opt.unwrap_or("none");
+
+    // api name
+    let api = Pa_GetHostApiInfo((*info).host_api);
+    let c_str_api = c_str::CString::new((*api).name, false);
+    let api_name_opt = c_str_api.as_str();
+    let api_name = api_name_opt.unwrap_or("none");
+    format!("\"{}\", host_api: \"{}\"", name, api_name)
+}
+
 pub fn init () -> (Box<io::ChanReader>, Sender<bool>) {
     unsafe { Pa_Initialize() };
 
@@ -150,20 +164,14 @@ pub fn init () -> (Box<io::ChanReader>, Sender<bool>) {
     for i in range(0, n_devices) {
         unsafe {
             let info = Pa_GetDeviceInfo(i);
-
-            // device name
-            let c_str_name = c_str::CString::new(info.name, false);
-            let name_opt = c_str_name.as_str();
-            let name = name_opt.unwrap_or("none");
-            println!("name! {}", name);
-
-            // api name
-            let api = Pa_GetHostApiInfo(info.host_api);
-            let c_str_api = c_str::CString::new(api.name, false);
-            let api_name_opt = c_str_api.as_str();
-            let api_name = api_name_opt.unwrap_or("none");
-            println!("[mic] device #{}: \"{}\", host_api: \"{}\"", i, name, api_name);
+            println!("[mic] device #{}: {}", i, device_to_string(info));
         }
+    }
+
+    unsafe {
+        let def = Pa_GetDefaultInputDevice();
+        let info = Pa_GetDeviceInfo(def);
+        println!("[mic] using default device (#{}: {})", def, device_to_string(info));
     }
 
     let (mut tx, rx) = channel();
