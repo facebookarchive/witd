@@ -168,7 +168,7 @@ fn main() {
                  .as_slice())
         .unwrap_or(9877);
 
-    println!("{}, {}", matches.opt_present("l"), matches.opt_strs("input"));
+    // println!("{}, {}", matches.opt_present("l"), matches.opt_strs("input"));
 
     // before Wit is initialized
     let input: Option<int> = matches.opt_str("input").and_then(|x| from_str(x.as_slice()));

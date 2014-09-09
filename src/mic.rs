@@ -105,6 +105,9 @@ type PaStreamCallback =
 #[link(name = "portaudio")]
 extern {
     fn Pa_Initialize() -> c_void;
+    fn Pa_IsFormatSupported(input: *const PaStreamParameters,
+                            output: *const PaStreamParameters,
+                            sample_rate: c_double) -> PaError;
     fn Pa_GetErrorText(e: PaError) -> *const c_char;
     fn Pa_GetDeviceCount() -> PaDeviceIndex;
     fn Pa_GetDeviceInfo(i: c_int) -> *const PaDeviceInfo;
@@ -198,6 +201,7 @@ pub fn start(input_device: Option<int>) -> (Box<io::ChanReader>, Sender<bool>) {
                 }
             } else {
                 println!("[mic] using device #{}", input_device.unwrap());
+                let rate = 16000. as c_double;
                 let in_params = PaStreamParameters {
                     device: input_device.unwrap() as i32,
                     sample_format: paUInt8,
@@ -206,9 +210,15 @@ pub fn start(input_device: Option<int>) -> (Box<io::ChanReader>, Sender<bool>) {
                     host_api_specific_stream_info: ptr::mut_null()
                 };
 
-                let err = Pa_OpenStream(
-                    &mut stream, &in_params, ptr::null(),
-                    16000. as c_double, frames_per_buffer, 0,
+                let mut err = Pa_IsFormatSupported(&in_params, ptr::null(), rate);
+                if err != paNoError {
+                    print_err("error: format not supported", err);
+                    return;
+                }
+
+                err = Pa_OpenStream(
+                    &mut stream, &in_params, ptr::null(), rate,
+                    frames_per_buffer, 0,
                     Some(stream_callback), tx_ptr);
                 if err != paNoError {
                     print_err("error while opening stream", err);
