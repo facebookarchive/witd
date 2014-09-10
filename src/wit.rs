@@ -12,7 +12,7 @@ use mic;
 
 pub enum WitCommand {
     Text(String, String, Sender<Result<Json, RequestError>>),
-    Start(String, String),
+    Start(String),
     Stop(Sender<Result<Json, RequestError>>)
 }
 
@@ -28,8 +28,7 @@ pub struct State {
 }
 
 pub struct Options {
-    pub input_device: Option<int>,
-    pub sample_rate: Option<f64>
+    pub input_device: Option<String>
 }
 
 fn exec_request(request: Request, token: String) -> Result<Json,RequestError> {
@@ -81,19 +80,14 @@ pub fn interpret_string(ctl: &Sender<WitCommand>,
 }
 
 pub fn start_recording(ctl: &Sender<WitCommand>,
-                        token: String,
-                        content_type: String) {
-    ctl.send(Start(token, content_type));
+                        token: String) {
+    ctl.send(Start(token));
 }
 
 pub fn stop_recording(ctl: &Sender<WitCommand>) -> Receiver<Result<Json,RequestError>> {
     let (result_tx, result_rx) = channel();
     ctl.send(Stop(result_tx));
     return result_rx
-}
-
-pub fn list_devices() {
-    mic::list_devices();
 }
 
 pub fn init(opts: Options) -> Sender<WitCommand>{
@@ -117,11 +111,27 @@ pub fn init(opts: Options) -> Sender<WitCommand>{
                     result_tx.send(r);
                     ongoing
                 }
-                Start(token, content_type) => {
+                Start(token) => {
                     if ongoing.is_none() {
-                        let (http_tx, http_rx) = channel();
-                        let (mut reader, mic_tx) = mic::start(opts.input_device, opts.sample_rate);
+                        let micContextOpt = mic::start(opts.input_device.clone());
 
+                        let (http_tx, http_rx) = channel();
+                        let mic::MicContext {
+                            reader: mut reader,
+                            sender: mic_tx,
+                            rate: rate,
+                            encoding: encoding,
+                            bits_per_sample: bits_per_sample,
+                            is_big_endian: is_big_endian
+                        } = micContextOpt.unwrap();
+
+                        let content_type =
+                            format!("audio/raw;encoding={};bits={};rate={};endian={}",
+                                encoding,
+                                bits_per_sample,
+                                rate,
+                                if is_big_endian {"big"} else {"little"});
+                        println!("Sending speech request with content type: {}", content_type);
                         spawn(proc() {
                             let mut reader_ref = &mut *reader;
                             let foo = do_speech_request(reader_ref, content_type, token);

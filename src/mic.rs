@@ -1,341 +1,400 @@
 extern crate libc;
 
-use std::{c_str, c_vec, fmt, io, mem, ptr, sync, time};
-use self::libc::{c_void, c_double, c_char, c_int, c_long, c_ulong, size_t, malloc};
+use std::ptr::null;
+use std::io;
+use std::c_str::CString;
+use self::libc::{c_char, c_uchar, c_int, c_uint, c_double, c_void, size_t, free};
+use std::comm::{Empty, Disconnected};
+use std::vec::Vec;
 
-type PaDeviceIndex = c_int;
-type PaError = c_int;
-type PaHostApiIndex = i32;
-static paNoError: c_int = 0;
+static SOX_MAX_NLOOPS: uint = 8;
+static BUF_SIZE: uint = 100;
 
-/*
-#define paFloat32        ((PaSampleFormat) 0x00000001)
-#define paInt32          ((PaSampleFormat) 0x00000002)
-#define paInt24          ((PaSampleFormat) 0x00000004)
-#define paInt16          ((PaSampleFormat) 0x00000008)
-#define paInt8           ((PaSampleFormat) 0x00000010)
-#define paUInt8          ((PaSampleFormat) 0x00000020)
-#define paCustomFormat   ((PaSampleFormat) 0x00010000)
-#define paNonInterleaved ((PaSampleFormat) 0x80000000)
-*/
-static paInt16: u32 = 0x00000008;
-static paUInt8: u32 = 0x00000020;
-
-type PaSampleFormat = u32;
-
-type PaStream = c_void;
-pub type PaTime = c_double;
-
-// callback stuff
-pub struct PaStreamCallbackTimeInfo {
-    pub input_buffer_adc_time : PaTime,
-    pub current_time : PaTime,
-    pub output_buffer_dac_time : PaTime
-}
-pub enum PaStreamCallbackResult {
-    PaContinue = 0,
-    PaComplete = 1,
-    PaAbort = 2
-}
-
-// Stream flags
-pub type PaStreamFlags = u64;
-pub static PaNoFlag: PaStreamFlags = 0;
-pub static PaClipOff: PaStreamFlags = 0x00000001;
-pub static PaDitherOff: PaStreamFlags = 0x00000002;
-pub static PaNeverDropInput: PaStreamFlags = 0x00000004;
-pub static PaPrimeOutputBuffersUsingStreamCallback: PaStreamFlags = 0x00000008;
-pub static PaPlatformSpecificFlags: PaStreamFlags = 0xFFFF0000;
-
-pub type PaHostApiTypeId = i32;
-pub static PaInDevelopment: PaHostApiTypeId = 0;
-pub static PaDirectSound: PaHostApiTypeId = 1;
-pub static PaMME: PaHostApiTypeId = 2;
-pub static PaASIO: PaHostApiTypeId = 3;
-pub static PaSoundManager: PaHostApiTypeId = 4;
-pub static PaCoreAudio: PaHostApiTypeId = 5;
-pub static PaOSS: PaHostApiTypeId = 7;
-pub static PaALSA: PaHostApiTypeId = 8;
-pub static PaAL: PaHostApiTypeId = 9;
-pub static PaBeOS: PaHostApiTypeId = 10;
-pub static PaWDMKS: PaHostApiTypeId = 11;
-pub static PaJACK: PaHostApiTypeId = 12;
-pub static PaWASAPI: PaHostApiTypeId = 13;
-pub static PaAudioScienceHPI: PaHostApiTypeId = 14;
-
-/// A structure containing information about a particular host API.
 #[repr(C)]
-pub struct PaHostApiInfo {
-    pub struct_version: i32,
-    pub host_type: i32,
+#[deriving(Show)]
+pub enum SoxErrorT {
+  SOX_SUCCESS = 0,     /**< Function succeeded = 0 */
+  SOX_EOF = -1,        /**< End Of File or other error = -1 */
+  SOX_EHDR = 2000,     /**< Invalid Audio Header = 2000 */
+  SOX_EFMT = 2001,     /**< Unsupported data format = 2001 */
+  SOX_ENOMEM = 2002,   /**< Can't alloc memory = 2002 */
+  SOX_EPERM = 2003,    /**< Operation not permitted = 2003 */
+  SOX_ENOTSUP = 2004,  /**< Operation not supported = 2004 */
+  SOX_EINVAL = 2005    /*< Invalid argument = 2005 */
+}
+
+#[repr(C)]
+#[deriving(Show)]
+pub enum SoxEncodingT {
+    SOX_ENCODING_UNKNOWN    = 0,  /**< encoding has not yet been determined */
+
+    SOX_ENCODING_SIGN2      = 1,  /**< signed linear 2's comp: Mac */
+    SOX_ENCODING_UNSIGNED   = 2,  /**< unsigned linear: Sound Blaster */
+    SOX_ENCODING_FLOAT      = 3,  /**< floating point (binary format) */
+    SOX_ENCODING_FLOAT_TEXT = 4,  /**< floating point (text format) */
+    SOX_ENCODING_FLAC       = 5,  /**< FLAC compression */
+    SOX_ENCODING_HCOM       = 6,  /**< Mac FSSD files with Huffman compression */
+    SOX_ENCODING_WAVPACK    = 7,  /**< WavPack with integer samples */
+    SOX_ENCODING_WAVPACKF   = 8,  /**< WavPack with float samples */
+    SOX_ENCODING_ULAW       = 9,  /**< u-law signed logs: US telephony, SPARC */
+    SOX_ENCODING_ALAW       = 10, /**< A-law signed logs: non-US telephony, Psion */
+    SOX_ENCODING_G721       = 11, /**< G.721 4-bit ADPCM */
+    SOX_ENCODING_G723       = 12, /**< G.723 3 or 5 bit ADPCM */
+    SOX_ENCODING_CL_ADPCM   = 13, /**< Creative Labs 8 --> 2,3,4 bit Compressed PCM */
+    SOX_ENCODING_CL_ADPCM16 = 14, /**< Creative Labs 16 --> 4 bit Compressed PCM */
+    SOX_ENCODING_MS_ADPCM   = 15, /**< Microsoft Compressed PCM */
+    SOX_ENCODING_IMA_ADPCM  = 16, /**< IMA Compressed PCM */
+    SOX_ENCODING_OKI_ADPCM  = 17, /**< Dialogic/OKI Compressed PCM */
+    SOX_ENCODING_DPCM       = 18, /**< Differential PCM: Fasttracker 2 (xi) */
+    SOX_ENCODING_DWVW       = 19, /**< Delta Width Variable Word */
+    SOX_ENCODING_DWVWN      = 20, /**< Delta Width Variable Word N-bit */
+    SOX_ENCODING_GSM        = 21, /**< GSM 6.10 33byte frame lossy compression */
+    SOX_ENCODING_MP3        = 22, /**< MP3 compression */
+    SOX_ENCODING_VORBIS     = 23, /**< Vorbis compression */
+    SOX_ENCODING_AMR_WB     = 24, /**< AMR-WB compression */
+    SOX_ENCODING_AMR_NB     = 25, /**< AMR-NB compression */
+    SOX_ENCODING_CVSD       = 26, /**< Continuously Variable Slope Delta modulation */
+    SOX_ENCODING_LPC10      = 27, /**< Linear Predictive Coding */
+    SOX_ENCODING_OPUS       = 28, /**< Opus compression */
+
+    SOX_ENCODINGS           = 29  /*< End of list marker */
+}
+
+#[repr(C)]
+pub enum LsxIoType {
+  LsxIoFile = 0,
+  LsxIoPipe = 1,
+  LsxIoUrl = 2
+}
+
+#[repr(C)]
+#[deriving(Show)]
+pub enum SoxBool {
+    SoxFalse = 0,
+    SoxTrue = 1
+}
+
+#[repr(C)]
+pub enum SoxOptionT {
+    SoxOptionNo = 0,
+    SoxOptionYes = 1,
+    SoxOptionDefault = 2
+}
+
+#[repr(C)]
+pub enum SoxPlotT {
+    SoxPlotOff = 0,
+    SoxPlotOctave = 1,
+    SoxPlotGnuplot = 2,
+    SoxPlotData = 3
+}
+
+#[repr(C)]
+pub struct SoxInstrInfoT {
+    pub midi_note: c_char,
+    pub midi_low: c_char,
+    pub midi_hi: c_char,
+    pub nloops: c_uchar,
+    pub loops: c_uint
+}
+
+#[repr(C)]
+pub struct SoxLoopInfoT {
+    pub start: u64,
+    pub length: u64,
+    pub count: c_uint,
+    pub _type: c_uchar
+}
+
+#[repr(C)]
+pub struct SoxOobT {
+    pub comments: *mut *const c_char,
+    pub instr: SoxInstrInfoT,
+    pub loops: [SoxLoopInfoT, ..SOX_MAX_NLOOPS]
+}
+
+#[repr(C)]
+#[deriving(Clone)]
+#[allow(raw_pointer_deriving)]
+pub struct SoxSignalInfoT {
+    pub rate: c_double,
+    pub channels: c_uint,
+    pub precision: c_uint,
+    pub length: u64,
+    pub mult: *mut c_double
+}
+
+#[repr(C)]
+pub struct SoxEncodingInfoT {
+    pub encoding: SoxEncodingT,
+    pub bits_per_sample: c_uint,
+    pub compression: c_double,
+    pub reverse_bytes: SoxOptionT,
+    pub reverse_nibbles: SoxOptionT,
+    pub reverse_bits: SoxOptionT,
+    pub opposite_endian: SoxBool
+}
+
+#[repr(C)]
+pub struct SoxFormatHandlerT {
+    pub sox_lib_version_code: c_uint,
+    pub description: *const c_char,
+    pub names: *const *const c_char,
+    pub flags: c_uint,
+    pub startread: *const c_void,
+    pub read: *const c_void,
+    pub stopread: *const c_void,
+    pub startwrite: *const c_void,
+    pub write: *const c_void,
+    pub stopwrite: *const c_void,
+    pub seek: *const c_void,
+    pub write_formats: *const c_uint,
+    pub write_rates: *const c_double,
+    pub priv_size: size_t
+}
+
+#[repr(C)]
+pub struct SoxFormatT {
+    pub filename: *const c_char,
+    pub signal: SoxSignalInfoT,
+    pub encoding: SoxEncodingInfoT,
+    pub filetype: *const c_char,
+    pub oob: SoxOobT,
+    pub seekable: SoxBool,
+    pub mode: c_char,
+    pub olength: u64,
+    pub clips: u64,
+    pub sox_errno: c_int,
+    pub sox_errstr: [c_char, ..256],
+    pub fp: *mut c_void,
+    pub io_type: LsxIoType,
+    pub tell_off: u64,
+    pub data_start: u64,
+    pub handler: SoxFormatHandlerT,
+    pub _priv: *mut c_void
+}
+
+#[repr(C)]
+pub struct SoxEffectHandlerT {
     pub name: *const c_char,
-    pub device_count: i32,
-    pub default_input_device: i32,
-    pub default_output_device: i32
-}
-#[repr(C)]
-#[deriving(Clone, PartialEq, PartialOrd)]
-pub struct PaDeviceInfo {
-    pub struct_version: i32,
-    pub name: *const c_char,
-    pub host_api: PaHostApiIndex,
-    pub max_input_channels: i32,
-    pub max_output_channels: i32,
-    pub default_low_input_latency: PaTime,
-    pub default_low_output_latency: PaTime,
-    pub default_high_input_latency: PaTime,
-    pub default_high_output_latency: PaTime,
-    pub default_sample_rate: c_double
-}
-#[repr(C)]
-pub struct PaStreamParameters {
-    pub device : PaDeviceIndex,
-    pub channel_count : i32,
-    pub sample_format : PaSampleFormat,
-    pub suggested_latency : PaTime,
-    pub host_api_specific_stream_info : *mut c_void
+    pub usage: *const c_char,
+    pub flags: c_uint,
+    pub getopts: *mut c_void,
+    pub start: *mut c_void,
+    pub flow: *mut c_void,
+    pub drain: *mut c_void,
+    pub stop: *mut c_void,
+    pub kill: *mut c_void,
+    pub priv_size: size_t
 }
 
-pub type PaStreamCallbackFlags = u64;
-type PaStreamCallback =
-    extern "C" fn(*const c_void, *mut c_void, c_ulong,
-                  *const PaStreamCallbackTimeInfo,
-                  PaStreamCallbackFlags, *mut c_void) -> PaStreamCallbackResult;
+#[repr(C)]
+pub struct SoxGlobalsT {
+    pub verbosity: c_uint,
+    pub output_message_handler: *mut c_void,
+    pub repeatable: SoxBool,
+    pub bufsize: size_t,
+    pub input_bufsiz: size_t,
+    pub ranqd1: i32,
+    pub stdin_in_use_by: *const c_char,
+    pub stdout_in_use_by: *const c_char,
+    pub subsystem: *const c_char,
+    pub tmp_path: *const c_char,
+    pub use_magic: SoxBool,
+    pub use_threads: SoxBool
+}
 
-#[link(name = "portaudio")]
+#[repr(C)]
+pub struct SoxEffectsGlobalsT {
+    pub plot: SoxPlotT,
+    pub global_info: *mut SoxGlobalsT
+}
+
+#[repr(C)]
+pub struct SoxEffectT {
+    pub global_info: *mut SoxEffectsGlobalsT,
+    pub in_signal: SoxSignalInfoT,
+    pub out_signal: SoxSignalInfoT,
+    pub in_encoding: *const SoxEncodingInfoT,
+    pub out_encoding: *const SoxEncodingInfoT,
+    pub handler: SoxEffectHandlerT,
+    pub obuf: i32,
+    pub obeg: size_t,
+    pub oend: size_t,
+    pub imin: size_t,
+    pub clips: u64,
+    pub flows: size_t,
+    pub flow: size_t,
+    pub _priv: *const c_void
+}
+
+#[repr(C)]
+pub struct SoxEffectsChainT {
+    pub effects: *mut *mut SoxEffectT,
+    pub table_size: c_uint,
+    pub length: c_uint,
+    pub ibufc: *mut *mut i32,
+    pub obufc: *mut *mut i32,
+    pub global_info: SoxEffectsGlobalsT,
+    pub in_enc: SoxEncodingInfoT,
+    pub out_enc: SoxEncodingInfoT
+}
+
+#[link(name = "sox")]
 extern {
-    fn Pa_Initialize() -> c_void;
-    fn Pa_IsFormatSupported(input: *const PaStreamParameters,
-                            output: *const PaStreamParameters,
-                            sample_rate: c_double) -> PaError;
-    fn Pa_GetErrorText(e: PaError) -> *const c_char;
-    fn Pa_GetDeviceCount() -> PaDeviceIndex;
-    fn Pa_GetDeviceInfo(i: c_int) -> *const PaDeviceInfo;
-    fn Pa_GetDefaultHostApi() -> PaHostApiIndex;
-    fn Pa_GetDefaultInputDevice() -> PaDeviceIndex;
-    fn Pa_GetHostApiInfo(i: c_int) -> *const PaHostApiInfo;
-    fn Pa_GetVersionText() -> *const c_char;
-    fn Pa_OpenStream(
-        stream: *mut *mut PaStream,
-        inputParams: *const PaStreamParameters,
-        outputParams: *const PaStreamParameters,
-        sampleRate: c_double,
-        framesPerBuffer: c_ulong,
-        streamFlags: PaStreamFlags,
-        streamCallBack: Option<PaStreamCallback>,
-        userData: *mut c_void)
-        -> PaError;
-    fn Pa_OpenDefaultStream(
-        stream: *mut *mut PaStream,
-        numInputChannels: c_int,
-        numOutputChannels: c_int,
-        sampleFormat: PaSampleFormat,
-        sampleRate: c_double,
-        framesPerBuffer: c_ulong,
-        streamCallBack: Option<PaStreamCallback>,
-        userData: *mut c_void)
-        -> PaError;
-    fn Pa_StartStream(stream: *mut PaStream) -> PaError;
-    fn Pa_StopStream(stream: *mut PaStream) -> PaError;
-    fn Pa_ReadStream(stream: *mut PaStream, buffer: *mut c_void, frames: c_ulong) -> PaError;
-    fn Pa_Sleep(msec: c_long) -> c_void;
+    fn sox_version() -> *const c_char;
+    fn sox_format_init() -> SoxErrorT;
+    fn sox_open_read(
+        path: *const c_char,
+        signal: *const SoxSignalInfoT,
+        encoding: *const SoxEncodingInfoT,
+        filetype: *const c_char) -> *const SoxFormatT;
+    fn sox_read(ft: *const SoxFormatT, buf: *const i32, len: size_t) -> size_t;
+    fn sox_open_write(
+        path: *const c_char,
+        signal: *const SoxSignalInfoT,
+        encoding: *const SoxEncodingInfoT,
+        filetype: *const c_char,
+        oob: *const SoxOobT,
+        overwrite_permitted: *const c_void) -> *const SoxFormatT;
+    fn sox_close(ft: *const SoxFormatT) -> SoxErrorT;
+    fn sox_create_effects_chain(
+        in_enc: *const SoxEncodingInfoT,
+        out_enc: *const SoxEncodingInfoT) -> *mut SoxEffectsChainT;
+    fn sox_find_effect(name: *const c_char) -> *const SoxEffectHandlerT;
+    fn sox_create_effect(eh: *const SoxEffectHandlerT) -> *mut SoxEffectT;
+    fn sox_effect_options(effp: *mut SoxEffectT, argc: c_int, argv: *const *const c_char) -> SoxErrorT;
+    fn sox_add_effect(
+        chain: *mut SoxEffectsChainT,
+        effp: *mut SoxEffectT,
+        _in: *mut SoxSignalInfoT,
+        out: *const SoxSignalInfoT) -> SoxErrorT;
+    fn sox_flow_effects(chain: *mut SoxEffectsChainT, callback: *const c_void, client_data: *const c_void) -> SoxErrorT;
+    fn sox_quit() -> SoxErrorT;
 }
 
-struct MicState {
-    stream: *mut PaStream,
-    tx: Sender<Vec<u8>>
+pub struct MicContext {
+    pub reader: Box<io::ChanReader>,
+    pub sender: Sender<bool>,
+    pub rate: u32,
+    pub encoding: String,
+    pub bits_per_sample: u32,
+    pub is_big_endian: bool
 }
 
-extern "C" fn stream_callback
-    (input: *const c_void, output: *mut c_void,
-     frame_count: c_ulong, info: *const PaStreamCallbackTimeInfo,
-     flags: PaStreamCallbackFlags, data: *mut c_void)
-     -> PaStreamCallbackResult {
-         // println!("rx {} frames", frame_count);
-
-         let c_bytes: c_vec::CVec<u8> = unsafe {
-             c_vec::CVec::new(input as *mut u8, frame_count as uint)
-         };
-         let bytes: Vec<u8> = c_bytes.as_slice().to_vec();
-
-         let tx: &mut Sender<Vec<u8>> = unsafe {
-             &mut *(data as *mut Sender<Vec<u8>>)
-         };
-
-         // println!("tx addr: {:p}, bytes len: {}", tx, bytes.len())
-         let result = tx.send_opt(bytes);
-         if result.is_err() {
-             println!("[mic] error while sending: {}", result.err());
-         }
-
-         PaContinue
-     }
-
-fn print_err(tag: &str, err: PaError) {
-    unsafe {
-        let msg = c_str::CString::new(Pa_GetErrorText(err), false);
-        println!("[mic] {}: {}", tag, msg.as_str().unwrap_or("unk"));
-    }
+pub fn is_big_endian() -> bool {
+    return 1u16.to_be() == 1u16;
 }
 
-pub fn start(input_device: Option<int>, sample_rate: Option<f64>)
-             -> (Box<io::ChanReader>, Sender<bool>) {
+pub fn start(input_device: Option<String>) -> Option<MicContext> {
+
     let (mut tx, rx) = channel();
     let reader = io::ChanReader::new(rx);
 
     let (ctl_tx, ctl_rx) = channel();
 
+    let path = input_device.unwrap_or("default".to_string()).to_c_str();
+    let alsa = "alsa".to_c_str();
+    let coreaudio = "coreaudio".to_c_str();
+
+    let mut inputPtr = unsafe {sox_open_read(path.as_ptr(), null(), null(), alsa.as_ptr())};
+    if inputPtr.is_null() {
+        println!("Couldn't open input device using alsa. Trying with coreaudio...");
+        inputPtr = unsafe {sox_open_read(path.as_ptr(), null(), null(), coreaudio.as_ptr())};
+    }
+    if inputPtr.is_null() {
+        println!("Failed to open input device");
+        return None;
+    }
+
+    let input = unsafe {*inputPtr};
+    println!("Initialized recording device");
+    println!("rate: {}, channels: {}, encoding: {}, bits_per_sample: {}, opposite_endian: {}",
+        input.signal.rate,
+        input.signal.channels,
+        input.encoding.encoding,
+        input.encoding.bits_per_sample,
+        input.encoding.opposite_endian);
+
+
     spawn(proc() {
-        let mut stream: *mut PaStream = ptr::mut_null();
-        let frames_per_buffer: c_ulong = 32 as c_ulong;
-
-        // let (mut tx, rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel();
-        let mut tx = tx.clone();
-        let tx_ptr: *mut c_void = &mut tx as *mut _ as *mut c_void;
-
-        unsafe {
-            if input_device.is_none() {
-                let rate: c_double = sample_rate.unwrap_or(16000.) as c_double;
-
-                println!("[mic] using default device, rate={}", rate);
-                let err = Pa_OpenDefaultStream(
-                    &mut stream, 1, 0, paUInt8, rate, frames_per_buffer,
-                    Some(stream_callback), tx_ptr);
-                if err != paNoError {
-                    print_err("error while opening stream", err);
-                }
-            } else {
-                let idx = input_device.unwrap();
-                let info = Pa_GetDeviceInfo(idx as i32);
-                let rate: c_double = sample_rate.unwrap_or((*info).default_sample_rate) as c_double;
-                let latency: c_double = (*info).default_low_input_latency;
-                let max_in: i32 = (*info).max_input_channels;
-                let max_out: i32 = (*info).max_output_channels;
-                let in_params = PaStreamParameters {
-                    device: idx as i32,
-                    sample_format: paUInt8,
-                    channel_count: 1 as i32,
-                    suggested_latency: latency,
-                    host_api_specific_stream_info: ptr::mut_null()
-                };
-
-                println!("[mic] using device #{}, rate={}, max_in={}, max_out={}",
-                         input_device.unwrap(), rate, max_in, max_out);
-
-
-                let err = Pa_OpenStream(
-                    &mut stream, &in_params, ptr::null(), rate,
-                    frames_per_buffer, 0,
-                    Some(stream_callback), tx_ptr);
-                if err != paNoError {
-                    print_err("error while opening stream", err);
-                }
-            }
-        }
-
         loop {
-            println!("[mic] ready to recv");
-            let r: Result<bool, ()> = ctl_rx.recv_opt();
-
-            if r.is_err() {
-                println!("[mic] done");
-                break;
-            }
-
-            let x = r.unwrap();
-            println!("[mic] recv'd {}", x);
-
-            if x == true {
-                unsafe {
-                    let err = Pa_StartStream(stream);
-                    if err != paNoError {
-                        print_err("error while starting stream", err);
-                    }
-                };
-            } else if x == false {
-                unsafe {
-                    let err = Pa_StopStream(stream);
-                    if err != paNoError {
-                        print_err("error while stopping stream", err);
+            match ctl_rx.try_recv() {
+                Ok(x) => {
+                    println!("[mic] recv'd {}", x);
+                    match x {
+                        true => {
+                            println!("[mic] Mmh?");
+                        }
+                        false => {
+                            println!("[mic] stopping");
+                            unsafe {sox_close(inputPtr)};
+                            break;
+                        }
                     }
                 }
-                break;
+                Err(Empty) => {
+                    let numChannels = input.signal.channels as uint;
+                    let totalBytes = 4 * (BUF_SIZE - BUF_SIZE % numChannels);
+                    let buf = Vec::from_elem(totalBytes, 0u8);
+                    unsafe {sox_read(inputPtr, (&buf).as_ptr() as *const i32, BUF_SIZE as u64)};
+                    //println!("Read: {}", buf);
+                    let totalMonoBytes = totalBytes / numChannels;
+                    let monobuf = Vec::from_fn(totalMonoBytes, |idx| {
+                        buf[(idx / 4) * 4 * numChannels + (idx % 4)]
+                    });
+                    let result = tx.send_opt(monobuf);
+                    if result.is_err() {
+                        println!("[mic] error while sending: {}", result.err());
+                    }
+                }
+                Err(Disconnected) => {
+                    println!("[mic] done");
+                    break;
+                }
             }
         }
     });
 
     ctl_tx.send(true);
 
-    (box reader, ctl_tx)
+    let soxEncoding = input.encoding.encoding;
+    let encodingOpt = match soxEncoding {
+        SOX_ENCODING_SIGN2 => Some("signed-integer"),
+        SOX_ENCODING_UNSIGNED => Some("unsigned-integer"),
+        SOX_ENCODING_FLOAT => Some("floating-point"),
+        SOX_ENCODING_ULAW => Some("ulaw"),
+        SOX_ENCODING_ALAW => Some("alaw"),
+        _ => None
+    };
+    if encodingOpt.is_none() {
+        println!("[mic] unsupported encoding: {}", soxEncoding);
+        return None
+    }
+    let is_big_endian = match input.encoding.opposite_endian {
+        SoxFalse => is_big_endian(),
+        SoxTrue => !is_big_endian()
+    };
+    Some(MicContext {
+        reader: box reader,
+        sender: ctl_tx,
+        rate: input.signal.rate as u32,
+        encoding: encodingOpt.unwrap().to_string(),
+        bits_per_sample: input.encoding.bits_per_sample,
+        is_big_endian: is_big_endian
+    })
 }
 
 pub fn stop(tx: &Sender<bool>) {
     tx.send(false);
 }
 
-unsafe fn device_to_string(info: *const PaDeviceInfo) -> String {
-    // device name
-    let c_str_name = c_str::CString::new((*info).name, false);
-    let name_opt = c_str_name.as_str();
-    let name = name_opt.unwrap_or("none");
-
-    // api name
-    let api = Pa_GetHostApiInfo((*info).host_api);
-    let c_str_api = c_str::CString::new((*api).name, false);
-    let api_name_opt = c_str_api.as_str();
-    let api_name = api_name_opt.unwrap_or("none");
-    let max_in: i32 = (*info).max_input_channels;
-    let max_out: i32 = (*info).max_output_channels;
-
-    format!("\"{}\", host_api: \"{}\", max_in: {}, max_out: {}",
-            name, api_name, max_in, max_out)
-}
-
-pub fn list_devices() {
-    let n_devices = unsafe { Pa_GetDeviceCount() };
-
-    println!("[mic] detected {} devices", n_devices);
-
-    for i in range(0, n_devices) {
-        unsafe {
-            let info = Pa_GetDeviceInfo(i);
-            println!("[mic] device #{}: {}", i, device_to_string(info));
-        }
-    }
-
-    unsafe {
-        let def = Pa_GetDefaultInputDevice();
-        let info = Pa_GetDeviceInfo(def);
-        let api_def = Pa_GetDefaultHostApi();
-        let api_info = Pa_GetHostApiInfo(api_def);
-        let api_name = c_str::CString::new((*api_info).name, false);
-        let api_type = (*api_info).host_type;
-        println!("[mic] using default device (#{}: {})", def, device_to_string(info));
-        println!("[mic] using default host api #{}: name={} type={}",
-                 def, api_name, api_type);
-    }
-}
-
 pub fn init (/*args: &[String]*/) {
-    unsafe {
-        Pa_Initialize();
-        let c_str = c_str::CString::new(Pa_GetVersionText(), false);
-        println!("[mic] using portaudio: {}", c_str);
+    match unsafe {sox_format_init()} {
+        SOX_SUCCESS => println!("[mic] initialized sox: {}", unsafe {CString::new(sox_version(), false)}),
+        err => {
+            println!("[mic] failed to initialize sox: {}", err);
+            return;
+        }
     };
 }
-
-/*
-fn test() {
-    let (box reader, ctl) = mic_init();
-
-    spawn(proc() {
-        mic_start(&ctl);
-        io::timer::sleep(time::duration::Duration::milliseconds(1500));
-        mic_stop(&ctl);
-    });
-
-    let mut r = reader;
-    let mut w = io::File::open_mode(&Path::new("/tmp/foo.raw"), io::Open, io::ReadWrite);
-    io::util::copy(&mut r, &mut w);
-}
-*/
