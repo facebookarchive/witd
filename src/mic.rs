@@ -229,9 +229,7 @@ pub fn start(input_device: Option<String>) -> Option<MicContext> {
                 Ok(x) => {
                     println!("[mic] recv'd {}", x);
                     match x {
-                        true => {
-                            println!("[mic] Mmh?");
-                        }
+                        true => (),
                         false => {
                             println!("[mic] stopping");
                             unsafe {sox_close(input_ptr)};

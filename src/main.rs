@@ -109,7 +109,7 @@ impl Server for HttpServer {
                         wit::start_recording(&self.wit_tx,
                                              token.unwrap().to_string());
                     },
-                    ["/stop", _] => {
+                    ["/stop", ..] => {
                         // sync Wit stop
                         let wit_rx = wit::stop_recording(&self.wit_tx);
                         let json = wit_rx.recv();
