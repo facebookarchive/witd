@@ -59,7 +59,7 @@ $ curl -X GET "http://localhost:9877/text?q=Hello%20world&access_token=<YOUR_ACC
 
 ## Running on Raspberry Pi
 
-The easiest way to have witd running on a Raspberry Pi is to run the provided ARM binaries:
+The easiest way to have witd running on a Raspberry Pi is to trust us and run the provided ARM binary:
 
 ```bash
 ./witd-arm
@@ -69,14 +69,16 @@ The easiest way to have witd running on a Raspberry Pi is to run the provided AR
 
 The procedure below describes how to cross-compile witd-arm on a Debian host targeting Raspbian. It may work with other configurations but has not been tested yet.
 
+*Disclaimer: it is very ugly. The idea is to install the required libraries on the Rasperry Pi, and mount the Raspberry's /lib folders on the Debian host remotely, so that the linker running on the Debian host can access the Pi's libraries. Another approach would be to manually copy the libraries from the Raspberry Pi to the Debian host, but this often ends up in a dependency hell.*
+
 * Setup a Rust cross-compiler by following [these instructions](https://github.com/npryce/rusty-pi/blob/master/doc/compile-the-compiler.asciidoc). However, make sure to pass the extra `--enable-rpath` argument to the configure script:
 ```bash
 ./configure --target=arm-unknown-linux-gnueabihf --prefix=$HOME/pi-rust --enable-rpath && make && make install
 ```
-* Install the required libraries on the Raspberry Pi, and create a symlink for `libportaudio`:
+* Install the required libraries on the Raspberry Pi
 ```bash
-pi@raspberrypi ~$ sudo apt-get install libssl-dev libcurl4-openssl-dev libcrypto++-dev libportaudio2
-pi@raspberrypi ~$ ln -s /usr/lib/arm-linux-gnueabihf/libportaudio.so.2 /usr/lib/arm-linux-gnueabihf/libportaudio.so
+pi@raspberrypi ~$ sudo apt-get install libssl-dev libcurl4-openssl-dev libcrypto++-dev libsox
+pi@raspberrypi ~$ cp /usr/lib/libsox.so /usr/lib/arm-linux-gnueabihf/libsox.so // sorry for the mess, but we'll need it later
 ```
 * Install sshfs so that the build script running on the host can access the precompiled libraries on the Raspberry Pi by mounting a remote filesystem:
 ```bash
@@ -92,7 +94,10 @@ newgrp
 ```bash
 ./raspbuild pi@192.168.1.54
 ```
-where `pi` is a user on the Raspberry Pi and 192.168.1.54 is the IP of the Raspberry Pi. You need read access to /usr/lib/arm-linux-gnueabihf and /lib/arm-linux-gnueabihf on the Raspberry Pi (which is the case for the default user on Raspbian). You may be prompted for your Debian and/or Raspberry Pi password.
+where `pi` is a user on the Raspberry Pi and 192.168.1.54 is the IP of the Raspberry Pi. The script will mount the /usr/lib/arm-linux-gnueabihf and /lib/arm-linux-gnueabihf folders of your Raspberry Pi at the same locations on your Debian host, so you need to:
+* have read access to /usr/lib/arm-linux-gnueabihf and /lib/arm-linux-gnueabihf on the Raspberry Pi (which is the case for the default user on Raspbian)
+* be able to sudo on the Debian host
+* make sure you don't already have a /usr/lib/arm-linux-gnueabihf or /lib/arm-linux-gnueabihf on your Debian host
 
 The resulting executable should be in `target/arm-unknown-linux-gnueabihf/witd`.
 

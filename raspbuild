@@ -18,6 +18,13 @@ then
   SSH_PORT="$2"
 fi
 
+for d in "${paths[@]}"
+do
+    echo "Cleaning up"
+    sudo fusermount -u $d
+    sudo rmdir $d
+done
+
 for d in "${paths[@]}"; do
   if ! [ -d $d ]; then
     echo "Mounting $d..."
