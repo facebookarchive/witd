@@ -3,7 +3,7 @@ extern crate libc;
 use std::ptr::null;
 use std::io;
 use std::c_str::CString;
-use self::libc::{c_char, c_uchar, c_int, c_uint, c_double, c_void, size_t, free};
+use self::libc::{c_char, c_uchar, c_int, c_uint, c_double, c_void, size_t};
 use std::comm::{Empty, Disconnected};
 use std::vec::Vec;
 
@@ -79,14 +79,6 @@ pub enum SoxOptionT {
     SoxOptionNo = 0,
     SoxOptionYes = 1,
     SoxOptionDefault = 2
-}
-
-#[repr(C)]
-pub enum SoxPlotT {
-    SoxPlotOff = 0,
-    SoxPlotOctave = 1,
-    SoxPlotGnuplot = 2,
-    SoxPlotData = 3
 }
 
 #[repr(C)]
@@ -174,72 +166,6 @@ pub struct SoxFormatT {
     pub _priv: *mut c_void
 }
 
-#[repr(C)]
-pub struct SoxEffectHandlerT {
-    pub name: *const c_char,
-    pub usage: *const c_char,
-    pub flags: c_uint,
-    pub getopts: *mut c_void,
-    pub start: *mut c_void,
-    pub flow: *mut c_void,
-    pub drain: *mut c_void,
-    pub stop: *mut c_void,
-    pub kill: *mut c_void,
-    pub priv_size: size_t
-}
-
-#[repr(C)]
-pub struct SoxGlobalsT {
-    pub verbosity: c_uint,
-    pub output_message_handler: *mut c_void,
-    pub repeatable: SoxBool,
-    pub bufsize: size_t,
-    pub input_bufsiz: size_t,
-    pub ranqd1: i32,
-    pub stdin_in_use_by: *const c_char,
-    pub stdout_in_use_by: *const c_char,
-    pub subsystem: *const c_char,
-    pub tmp_path: *const c_char,
-    pub use_magic: SoxBool,
-    pub use_threads: SoxBool
-}
-
-#[repr(C)]
-pub struct SoxEffectsGlobalsT {
-    pub plot: SoxPlotT,
-    pub global_info: *mut SoxGlobalsT
-}
-
-#[repr(C)]
-pub struct SoxEffectT {
-    pub global_info: *mut SoxEffectsGlobalsT,
-    pub in_signal: SoxSignalInfoT,
-    pub out_signal: SoxSignalInfoT,
-    pub in_encoding: *const SoxEncodingInfoT,
-    pub out_encoding: *const SoxEncodingInfoT,
-    pub handler: SoxEffectHandlerT,
-    pub obuf: i32,
-    pub obeg: size_t,
-    pub oend: size_t,
-    pub imin: size_t,
-    pub clips: u64,
-    pub flows: size_t,
-    pub flow: size_t,
-    pub _priv: *const c_void
-}
-
-#[repr(C)]
-pub struct SoxEffectsChainT {
-    pub effects: *mut *mut SoxEffectT,
-    pub table_size: c_uint,
-    pub length: c_uint,
-    pub ibufc: *mut *mut i32,
-    pub obufc: *mut *mut i32,
-    pub global_info: SoxEffectsGlobalsT,
-    pub in_enc: SoxEncodingInfoT,
-    pub out_enc: SoxEncodingInfoT
-}
-
 #[link(name = "sox")]
 extern {
     fn sox_version() -> *const c_char;
@@ -250,27 +176,8 @@ extern {
         encoding: *const SoxEncodingInfoT,
         filetype: *const c_char) -> *const SoxFormatT;
     fn sox_read(ft: *const SoxFormatT, buf: *const i32, len: size_t) -> size_t;
-    fn sox_open_write(
-        path: *const c_char,
-        signal: *const SoxSignalInfoT,
-        encoding: *const SoxEncodingInfoT,
-        filetype: *const c_char,
-        oob: *const SoxOobT,
-        overwrite_permitted: *const c_void) -> *const SoxFormatT;
     fn sox_close(ft: *const SoxFormatT) -> SoxErrorT;
-    fn sox_create_effects_chain(
-        in_enc: *const SoxEncodingInfoT,
-        out_enc: *const SoxEncodingInfoT) -> *mut SoxEffectsChainT;
-    fn sox_find_effect(name: *const c_char) -> *const SoxEffectHandlerT;
-    fn sox_create_effect(eh: *const SoxEffectHandlerT) -> *mut SoxEffectT;
-    fn sox_effect_options(effp: *mut SoxEffectT, argc: c_int, argv: *const *const c_char) -> SoxErrorT;
-    fn sox_add_effect(
-        chain: *mut SoxEffectsChainT,
-        effp: *mut SoxEffectT,
-        _in: *mut SoxSignalInfoT,
-        out: *const SoxSignalInfoT) -> SoxErrorT;
-    fn sox_flow_effects(chain: *mut SoxEffectsChainT, callback: *const c_void, client_data: *const c_void) -> SoxErrorT;
-    fn sox_quit() -> SoxErrorT;
+    //fn sox_quit() -> SoxErrorT;
 }
 
 pub struct MicContext {
@@ -287,7 +194,7 @@ pub fn is_big_endian() -> bool {
 
 pub fn start(input_device: Option<String>) -> Option<MicContext> {
 
-    let (mut tx, rx) = channel();
+    let (tx, rx) = channel();
     let reader = io::ChanReader::new(rx);
 
     let (ctl_tx, ctl_rx) = channel();
@@ -296,17 +203,17 @@ pub fn start(input_device: Option<String>) -> Option<MicContext> {
     let alsa = "alsa".to_c_str();
     let coreaudio = "coreaudio".to_c_str();
 
-    let mut inputPtr = unsafe {sox_open_read(path.as_ptr(), null(), null(), alsa.as_ptr())};
-    if inputPtr.is_null() {
+    let mut input_ptr = unsafe {sox_open_read(path.as_ptr(), null(), null(), alsa.as_ptr())};
+    if input_ptr.is_null() {
         println!("Couldn't open input device using alsa. Trying with coreaudio...");
-        inputPtr = unsafe {sox_open_read(path.as_ptr(), null(), null(), coreaudio.as_ptr())};
+        input_ptr = unsafe {sox_open_read(path.as_ptr(), null(), null(), coreaudio.as_ptr())};
     }
-    if inputPtr.is_null() {
+    if input_ptr.is_null() {
         println!("Failed to open input device");
         return None;
     }
 
-    let input = unsafe {*inputPtr};
+    let input = unsafe {*input_ptr};
     println!("Initialized recording device");
     println!("rate: {}, channels: {}, encoding: {}, bits_per_sample: {}, opposite_endian: {}",
         input.signal.rate,
@@ -327,20 +234,20 @@ pub fn start(input_device: Option<String>) -> Option<MicContext> {
                         }
                         false => {
                             println!("[mic] stopping");
-                            unsafe {sox_close(inputPtr)};
+                            unsafe {sox_close(input_ptr)};
                             break;
                         }
                     }
                 }
                 Err(Empty) => {
-                    let numChannels = input.signal.channels as uint;
-                    let totalBytes = 4 * (BUF_SIZE - BUF_SIZE % numChannels);
-                    let buf = Vec::from_elem(totalBytes, 0u8);
-                    unsafe {sox_read(inputPtr, (&buf).as_ptr() as *const i32, BUF_SIZE as u64)};
+                    let num_channels = input.signal.channels as uint;
+                    let total_bytes = 4 * (BUF_SIZE - BUF_SIZE % num_channels);
+                    let buf = Vec::from_elem(total_bytes, 0u8);
+                    unsafe {sox_read(input_ptr, (&buf).as_ptr() as *const i32, BUF_SIZE as size_t)};
                     //println!("Read: {}", buf);
-                    let totalMonoBytes = totalBytes / numChannels;
-                    let monobuf = Vec::from_fn(totalMonoBytes, |idx| {
-                        buf[(idx / 4) * 4 * numChannels + (idx % 4)]
+                    let total_mono_bytes = total_bytes / num_channels;
+                    let monobuf = Vec::from_fn(total_mono_bytes, |idx| {
+                        buf[(idx / 4) * 4 * num_channels + (idx % 4)]
                     });
                     let result = tx.send_opt(monobuf);
                     if result.is_err() {
@@ -357,8 +264,8 @@ pub fn start(input_device: Option<String>) -> Option<MicContext> {
 
     ctl_tx.send(true);
 
-    let soxEncoding = input.encoding.encoding;
-    let encodingOpt = match soxEncoding {
+    let sox_encoding = input.encoding.encoding;
+    let encoding_opt = match sox_encoding {
         SOX_ENCODING_SIGN2 => Some("signed-integer"),
         SOX_ENCODING_UNSIGNED => Some("unsigned-integer"),
         SOX_ENCODING_FLOAT => Some("floating-point"),
@@ -366,8 +273,8 @@ pub fn start(input_device: Option<String>) -> Option<MicContext> {
         SOX_ENCODING_ALAW => Some("alaw"),
         _ => None
     };
-    if encodingOpt.is_none() {
-        println!("[mic] unsupported encoding: {}", soxEncoding);
+    if encoding_opt.is_none() {
+        println!("[mic] unsupported encoding: {}", sox_encoding);
         return None
     }
     let is_big_endian = match input.encoding.opposite_endian {
@@ -378,7 +285,7 @@ pub fn start(input_device: Option<String>) -> Option<MicContext> {
         reader: box reader,
         sender: ctl_tx,
         rate: input.signal.rate as u32,
-        encoding: encodingOpt.unwrap().to_string(),
+        encoding: encoding_opt.unwrap().to_string(),
         is_big_endian: is_big_endian
     })
 }

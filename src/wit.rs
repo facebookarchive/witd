@@ -113,7 +113,7 @@ pub fn init(opts: Options) -> Sender<WitCommand>{
                 }
                 Start(token) => {
                     if ongoing.is_none() {
-                        let micContextOpt = mic::start(opts.input_device.clone());
+                        let mic_context_opt = mic::start(opts.input_device.clone());
 
                         let (http_tx, http_rx) = channel();
                         let mic::MicContext {
@@ -122,14 +122,14 @@ pub fn init(opts: Options) -> Sender<WitCommand>{
                             rate: rate,
                             encoding: encoding,
                             is_big_endian: is_big_endian
-                        } = micContextOpt.unwrap();
+                        } = mic_context_opt.unwrap();
 
                         let content_type =
                             format!("audio/raw;encoding={};bits=32;rate={};endian={}", encoding, rate,
                                 if is_big_endian {"big"} else {"little"});
                         println!("Sending speech request with content type: {}", content_type);
                         spawn(proc() {
-                            let mut reader_ref = &mut *reader;
+                            let reader_ref = &mut *reader;
                             let foo = do_speech_request(reader_ref, content_type, token);
                             http_tx.send(foo);
                         });

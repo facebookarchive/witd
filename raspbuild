@@ -21,8 +21,8 @@ fi
 for d in "${paths[@]}"
 do
     echo "Cleaning up"
-    sudo fusermount -u $d
-    sudo rmdir $d
+    sudo fusermount -u $d > /dev/null 2>&1 || true
+    sudo rmdir $d > /dev/null 2>&1 || true
 done
 
 for d in "${paths[@]}"; do
@@ -37,7 +37,7 @@ for d in "${paths[@]}"; do
 done
 
 echo "Compiling..."
-cargo build --target=arm-unknown-linux-gnueabihf
+cargo build --target=arm-unknown-linux-gnueabihf || true
 
 for d in "${paths[@]}"
 do
