@@ -278,7 +278,6 @@ pub struct MicContext {
     pub sender: Sender<bool>,
     pub rate: u32,
     pub encoding: String,
-    pub bits_per_sample: u32,
     pub is_big_endian: bool
 }
 
@@ -380,7 +379,6 @@ pub fn start(input_device: Option<String>) -> Option<MicContext> {
         sender: ctl_tx,
         rate: input.signal.rate as u32,
         encoding: encodingOpt.unwrap().to_string(),
-        bits_per_sample: input.encoding.bits_per_sample,
         is_big_endian: is_big_endian
     })
 }
