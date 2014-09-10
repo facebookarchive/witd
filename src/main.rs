@@ -111,11 +111,8 @@ impl Server for HttpServer {
                             return;
                         }
 
-                        let content_type =
-                            format!("audio/raw;encoding=unsigned-integer;bits=16;rate=8000;endian=big");
                         wit::start_recording(&self.wit_tx,
-                                             token.unwrap().to_string(),
-                                             content_type);
+                                             token.unwrap().to_string());
                     },
                     ["/stop", ..args] => {
                         // sync Wit stop
@@ -147,9 +144,7 @@ fn main() {
 
     let opts = [
         optflag("h", "help", "display this help message"),
-        optflag("l", "list-input", "list input devices"),
-        optopt("i", "input", "select input device", "1"),
-        optopt("r", "rate", "set recording sample rate", "16000")
+        optopt("i", "input", "select input device", "default")
     ];
 
     let matches = match getopts(args.tail(), opts) {
@@ -173,20 +168,12 @@ fn main() {
 
     // before Wit is initialized
     if matches.opt_present("help") {
-        println!("{}", usage("witd (https://wit.ai)", opts.as_slice()));
+        println!("{}", usage("witd (https://github.com/wit-ai/witd)", opts.as_slice()));
         return;
     }
 
-    let input: Option<int> = matches.opt_str("input").and_then(|x| from_str(x.as_slice()));
-    let rate: Option<f64> = matches.opt_str("rate").and_then(|x| from_str(x.as_slice()));
-
-    let wit_tx = wit::init(wit::Options{input_device: input, sample_rate: rate});
-
-    // after Wit is initialized
-    if matches.opt_present("list-input") {
-        wit::list_devices();
-        return;
-    }
+    let device_opt = matches.opt_str("input");
+    let wit_tx = wit::init(wit::Options{input_device: device_opt});
 
     let server = HttpServer {
         host: host,
