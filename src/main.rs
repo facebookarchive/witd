@@ -5,18 +5,14 @@ extern crate url;
 extern crate serialize;
 extern crate getopts;
 use std::collections::HashMap;
-use std::io;
 use std::io::net::ip::{SocketAddr, IpAddr, Ipv4Addr};
 use std::os;
-use getopts::{optopt,optflag,getopts,OptGroup,usage,short_usage};
+use getopts::{optopt,optflag,getopts,usage};
 
 use http::server::{Config, Server, ResponseWriter};
-use http::server::request::{AbsolutePath, Request, RequestUri};
-use http::status::{BadRequest, MethodNotAllowed, InternalServerError};
+use http::server::request::{AbsolutePath, Request};
+use http::status::InternalServerError;
 use http::headers::content_type::MediaType;
-use self::curl::ErrCode;
-use serialize::json;
-use serialize::json::Json;
 mod wit;
 mod mic;
 
@@ -32,13 +28,12 @@ fn parse_query_params<'s>(uri: &'s str) -> HashMap<&'s str, &'s str> {
     let all_params: Vec<&str> = uri.split('&').collect();
     for param in all_params.iter() {
         let v_params:Vec<&str> = param.split('=').collect();
-        let inserted = match v_params.as_slice() {
+        match v_params.as_slice() {
             [k] => args.insert(k, "true"),
             [k, v] => args.insert(k, v),
             [k, v, ..] => args.insert(k, v),
             _ => false
         };
-        // println!("param {} inserted : {}", v_params, inserted);
     }
     return args;
 }
@@ -68,7 +63,7 @@ impl Server for HttpServer {
                     ["/text", ..args] => {
                         if args.len() == 0 {
                             w.write("params not found (token or q)".as_bytes())
-                                .unwrap_or_else(|e| println!("could not write resp"));
+                                .unwrap_or_else(|e| println!("could not write resp: {}", e));
                             return;
                         }
 
@@ -78,7 +73,7 @@ impl Server for HttpServer {
 
                         if token.is_none() || text.is_none() {
                             w.write("params not found (token or q)".as_bytes())
-                                .unwrap_or_else(|e| println!("could not write resp"));
+                                .unwrap_or_else(|e| println!("could not write resp: {}", e));
                             return;
                         }
 
@@ -89,7 +84,7 @@ impl Server for HttpServer {
                         println!("[http] recv from wit: {}", json);
                         if json.is_err() {
                             w.status = InternalServerError;
-                            w.write(b"something went wrong, sowwy!");
+                            w.write(b"something went wrong, sowwy!").unwrap();
                         } else {
                             w.write(format!("{}", json.unwrap()).as_bytes()).unwrap();
                         }
@@ -98,7 +93,7 @@ impl Server for HttpServer {
                         // async Wit start
                         if args.len() == 0 {
                             w.write("params not found (token)".as_bytes())
-                                .unwrap_or_else(|e| println!("could not write resp"));
+                                .unwrap_or_else(|e| println!("could not write resp: {}", e));
                             return;
                         }
 
@@ -107,21 +102,21 @@ impl Server for HttpServer {
 
                         if token.is_none() {
                             w.write("params not found (token)".as_bytes())
-                                .unwrap_or_else(|e| println!("could not write resp"));
+                                .unwrap_or_else(|e| println!("could not write resp: {}", e));
                             return;
                         }
 
                         wit::start_recording(&self.wit_tx,
                                              token.unwrap().to_string());
                     },
-                    ["/stop", ..args] => {
+                    ["/stop", _] => {
                         // sync Wit stop
                         let wit_rx = wit::stop_recording(&self.wit_tx);
                         let json = wit_rx.recv();
                         println!("[http] recv from wit: {}", json);
                         if json.is_err() {
                             w.status = InternalServerError;
-                            w.write(b"something went wrong, sowwy!");
+                            w.write(b"something went wrong, sowwy!").unwrap();
                         } else {
                             w.write(format!("{}", json.unwrap()).as_bytes()).unwrap();
                         }
@@ -134,13 +129,8 @@ impl Server for HttpServer {
     }
 }
 
-fn print_usage() {
-
-}
-
 fn main() {
     let args = os::args();
-    let program = args[0].clone();
 
     let opts = [
         optflag("h", "help", "display this help message"),
