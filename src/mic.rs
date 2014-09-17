@@ -184,8 +184,7 @@ pub struct MicContext {
     pub reader: Box<io::ChanReader>,
     pub sender: Sender<bool>,
     pub rate: u32,
-    pub encoding: String,
-    pub is_big_endian: bool
+    pub encoding: String
 }
 
 pub fn is_big_endian() -> bool {
@@ -222,6 +221,10 @@ pub fn start(input_device: Option<String>) -> Option<MicContext> {
         input.encoding.bits_per_sample,
         input.encoding.opposite_endian);
 
+    let is_big_endian = match input.encoding.opposite_endian {
+        SoxFalse => is_big_endian(),
+        SoxTrue => !is_big_endian()
+    };
 
     spawn(proc() {
         loop {
@@ -243,9 +246,14 @@ pub fn start(input_device: Option<String>) -> Option<MicContext> {
                     let buf = Vec::from_elem(total_bytes, 0u8);
                     unsafe {sox_read(input_ptr, (&buf).as_ptr() as *const i32, BUF_SIZE as size_t)};
                     //println!("Read: {}", buf);
-                    let total_mono_bytes = total_bytes / num_channels;
+                    let total_mono_bytes = total_bytes / (2 * num_channels); // 32bit -> 16bit
                     let monobuf = Vec::from_fn(total_mono_bytes, |idx| {
-                        buf[(idx / 4) * 4 * num_channels + (idx % 4)]
+                        let byte_offset = if is_big_endian {
+                            idx % 2
+                        } else {
+                            3 - idx % 2
+                        };
+                        buf[(idx / 4) * 4 * num_channels * 2 + byte_offset]
                     });
                     let result = tx.send_opt(monobuf);
                     if result.is_err() {
@@ -275,16 +283,11 @@ pub fn start(input_device: Option<String>) -> Option<MicContext> {
         println!("[mic] unsupported encoding: {}", sox_encoding);
         return None
     }
-    let is_big_endian = match input.encoding.opposite_endian {
-        SoxFalse => is_big_endian(),
-        SoxTrue => !is_big_endian()
-    };
     Some(MicContext {
         reader: box reader,
         sender: ctl_tx,
         rate: input.signal.rate as u32,
-        encoding: encoding_opt.unwrap().to_string(),
-        is_big_endian: is_big_endian
+        encoding: encoding_opt.unwrap().to_string()
     })
 }
 

@@ -120,13 +120,11 @@ pub fn init(opts: Options) -> Sender<WitCommand>{
                             reader: mut reader,
                             sender: mic_tx,
                             rate: rate,
-                            encoding: encoding,
-                            is_big_endian: is_big_endian
+                            encoding: encoding
                         } = mic_context_opt.unwrap();
 
                         let content_type =
-                            format!("audio/raw;encoding={};bits=32;rate={};endian={}", encoding, rate,
-                                if is_big_endian {"big"} else {"little"});
+                            format!("audio/raw;encoding={};bits=16;rate={};endian=big", encoding, rate);
                         println!("Sending speech request with content type: {}", content_type);
                         spawn(proc() {
                             let reader_ref = &mut *reader;
