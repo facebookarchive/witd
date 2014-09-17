@@ -134,7 +134,9 @@ fn main() {
 
     let opts = [
         optflag("h", "help", "display this help message"),
-        optopt("i", "input", "select input device", "default")
+        optopt("i", "input", "select input device", "default"),
+        optopt("a", "host", "IP address to listen on", "0.0.0.0"),
+        optopt("p", "port", "TCP port to listen on", "9877")
     ];
 
     let matches = match getopts(args.tail(), opts) {
@@ -144,12 +146,14 @@ fn main() {
 
     let host: IpAddr =
         from_str(os::getenv("WITD_HOST")
+                 .or(matches.opt_str("host"))
                  .unwrap_or("0.0.0.0".to_string())
                  .as_slice())
         .unwrap_or(Ipv4Addr(0,0,0,0));
 
     let port: u16 =
         from_str(os::getenv("WITD_PORT")
+                 .or(matches.opt_str("port"))
                  .unwrap_or("9877".to_string())
                  .as_slice())
         .unwrap_or(9877);
