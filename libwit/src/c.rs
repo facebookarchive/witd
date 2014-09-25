@@ -5,12 +5,11 @@ use libc::c_char;
 use cmd;
 use cmd::WitHandle;
 use native;
-use std::rt::task::Task;
 use std;
 use std::mem;
+use std::ptr;
 
 struct WitContext {
-    task: Box<Task>,
     handle: WitHandle
 }
 
@@ -21,7 +20,7 @@ pub unsafe extern "C" fn wit_init(device_opt: *const c_char) -> wit_context_ptr 
     let task = native::task::new((0, std::uint::MAX));
     let mut handle: Option<WitHandle> = None;
 
-    let task = task.run(|| {
+    task.run(|| {
         let device = if device_opt.is_null() {
             None
         } else {
@@ -35,10 +34,9 @@ pub unsafe extern "C" fn wit_init(device_opt: *const c_char) -> wit_context_ptr 
             }
         };
         handle = Some(cmd::init(device));
-    });
+    }).destroy();
 
     let boxed = box WitContext {
-        task: task,
         handle: handle.unwrap()
     };
     let res: wit_context_ptr = mem::transmute(boxed);
@@ -47,14 +45,14 @@ pub unsafe extern "C" fn wit_init(device_opt: *const c_char) -> wit_context_ptr 
 
 #[no_mangle]
 pub unsafe extern "C" fn wit_start_recording(context: wit_context_ptr, access_token: *const c_char) {
+    let task = native::task::new((0, std::uint::MAX));
     let context: Box<WitContext> = mem::transmute(context);
-    let handle = context.handle.clone();
-    context.task.run(|| {
-        let access_token_str = CString::new(access_token, false);
-        match access_token_str.as_str() {
-            Some(s) => {
-                let access_token = s.to_string();
-                    cmd::start_recording(&handle, access_token)
+    task.run(|| {
+        let access_token_opt = CString::new(access_token, false);
+        match access_token_opt.as_str() {
+            Some(access_token_str) => {
+                let access_token = access_token_str.to_string();
+                cmd::start_recording(&context.handle.clone(), access_token)
             }
             None => {
                 println!("[wit] error: failed to read access token");
@@ -63,4 +61,49 @@ pub unsafe extern "C" fn wit_start_recording(context: wit_context_ptr, access_to
     }).destroy();
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn wit_stop_recording(context: wit_context_ptr) -> *const c_char {
+    let task = native::task::new((0, std::uint::MAX));
+    let context: Box<WitContext> = mem::transmute(context);
+    let mut result: Option<String> = None;
+    task.run(|| {
+        result = cmd::stop_recording(&context.handle.clone());
+    }).destroy();
+    match result {
+        Some(r) => r.to_c_str().as_ptr(),
+        None => ptr::null()
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wit_text_query(context: wit_context_ptr, text: *const c_char, access_token: *const c_char) -> *const c_char {
+    let task = native::task::new((0, std::uint::MAX));
+    let context: Box<WitContext> = mem::transmute(context);
+    let mut result: Option<String> = None;
+    task.run(|| {
+        let access_token_opt = CString::new(access_token, false);
+        match access_token_opt.as_str() {
+            Some(access_token_str) => {
+                let access_token = access_token_str.to_string();
+                let text_opt = CString::new(text, false);
+                match text_opt.as_str() {
+                    Some(text_str) => {
+                        let text = text_str.to_string();
+                        result = cmd::text_query(&context.handle.clone(), text, access_token)
+                    },
+                    None => {
+                        println!("[wit] error: failed to read query text");
+                    }
+                }
+            }
+            None => {
+                println!("[wit] error: failed to read access token");
+            }
+        }
+    }).destroy();
+    match result {
+        Some(r) => r.to_c_str().as_ptr(),
+        None => ptr::null()
+    }
+}
 
