@@ -1,13 +1,12 @@
-extern crate curl;
-extern crate serialize;
 use std::str;
 use std::io;
-use self::curl::http;
-use self::curl::http::Request;
-use self::curl::ErrCode;
+use curl::http;
+use curl::http::Request;
+use curl::ErrCode;
 use serialize::json;
 use serialize::json::Json;
-use self::curl::http::body::{Body, ToBody, ChunkedBody};
+use curl::http::body::{Body, ToBody, ChunkedBody};
+
 use mic;
 
 pub enum WitCommand {
