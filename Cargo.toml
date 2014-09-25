@@ -7,8 +7,5 @@ authors = ["martin <martin@wit.ai", "oliv <oliv@wit.ai>", "willy <willy@wit.ai>"
 [dependencies.http]
 git = "https://github.com/chris-morgan/rust-http"
 
-[dependencies.curl]
-git = "https://github.com/carllerche/curl-rust.git"
-
 [dependencies.libwit]
 path = "libwit"
