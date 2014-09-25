@@ -14,7 +14,7 @@ and then
 ./build_c.sh
 ```
 
-This will create a `libwit.a` file in this folder.
+This will create a `libwit.a` file in the `lib` folder.
 
 To compile the example, run
 
