@@ -4,6 +4,7 @@ extern crate http;
 extern crate url;
 extern crate serialize;
 extern crate getopts;
+extern crate libwit;
 use std::collections::HashMap;
 use std::io::net::ip::{SocketAddr, IpAddr, Ipv4Addr};
 use std::os;
@@ -13,14 +14,12 @@ use http::server::{Config, Server, ResponseWriter};
 use http::server::request::{AbsolutePath, Request};
 use http::status::InternalServerError;
 use http::headers::content_type::MediaType;
-mod wit;
-mod mic;
 
 #[deriving(Clone)]
 struct HttpServer {
     host: IpAddr,
     port: u16,
-    wit_tx: Sender<wit::WitCommand>
+    wit_handle: libwit::WitHandle
 }
 
 fn parse_query_params<'s>(uri: &'s str) -> HashMap<&'s str, &'s str> {
@@ -36,6 +35,16 @@ fn parse_query_params<'s>(uri: &'s str) -> HashMap<&'s str, &'s str> {
         };
     }
     return args;
+}
+
+fn write_resp(res: Option<String>, w: &mut ResponseWriter) {
+    match res {
+        Some(s) => w.write(format!("{}", s).as_bytes()).unwrap(),
+        None => {
+            w.status = InternalServerError;
+            w.write(b"something went wrong, sowwy!").unwrap();
+        }
+    }
 }
 
 impl Server for HttpServer {
@@ -60,7 +69,7 @@ impl Server for HttpServer {
                 let uri_vec:Vec<&str> = uri.as_slice().split('?').collect();
 
                 match uri_vec.as_slice() {
-                    ["/text", ..args] => {
+                    ["/text", args..] => {
                         if args.len() == 0 {
                             w.write("params not found (token or q)".as_bytes())
                                 .unwrap_or_else(|e| println!("could not write resp: {}", e));
@@ -77,19 +86,14 @@ impl Server for HttpServer {
                             return;
                         }
 
-                        let wit_rx = wit::interpret_string(&self.wit_tx,
-                                                           token.unwrap().to_string(),
-                                                           text.unwrap().to_string());
-                        let json = wit_rx.recv();
-                        println!("[http] recv from wit: {}", json);
-                        if json.is_err() {
-                            w.status = InternalServerError;
-                            w.write(b"something went wrong, sowwy!").unwrap();
-                        } else {
-                            w.write(format!("{}", json.unwrap()).as_bytes()).unwrap();
-                        }
+                        let res = libwit::text_query(
+                            &self.wit_handle,
+                            text.unwrap().to_string(),
+                            token.unwrap().to_string()
+                        );
+                        write_resp(res, w);
                     },
-                    ["/start", ..args] => {
+                    ["/start", args..] => {
                         // async Wit start
                         if args.len() == 0 {
                             w.write("params not found (token)".as_bytes())
@@ -106,20 +110,14 @@ impl Server for HttpServer {
                             return;
                         }
 
-                        wit::start_recording(&self.wit_tx,
-                                             token.unwrap().to_string());
+                        libwit::start_recording(
+                            &self.wit_handle,
+                            token.unwrap().to_string()
+                        );
                     },
                     ["/stop", ..] => {
-                        // sync Wit stop
-                        let wit_rx = wit::stop_recording(&self.wit_tx);
-                        let json = wit_rx.recv();
-                        println!("[http] recv from wit: {}", json);
-                        if json.is_err() {
-                            w.status = InternalServerError;
-                            w.write(b"something went wrong, sowwy!").unwrap();
-                        } else {
-                            w.write(format!("{}", json.unwrap()).as_bytes()).unwrap();
-                        }
+                        let res = libwit::stop_recording(&self.wit_handle);
+                        write_resp(res, w);
                     },
                     _ => println!("unk uri: {}", uri)
                 }
@@ -167,12 +165,12 @@ fn main() {
     }
 
     let device_opt = matches.opt_str("input");
-    let wit_tx = wit::init(wit::Options{input_device: device_opt});
+    let handle = libwit::init(device_opt);
 
     let server = HttpServer {
         host: host,
         port: port,
-        wit_tx: wit_tx
+        wit_handle: handle
     };
 
     println!("[witd] listening on {}:{}", host.to_string(), port);

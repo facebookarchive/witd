@@ -1,6 +1,6 @@
 # witd
 
-`witd` is a light executable that makes it easy to use Wit.ai on a wide range of devices. It manages client audio recording and communication wit Wit.ai.
+`witd` is a light executable that makes it easy to use Wit.ai on a wide range of devices. It manages client audio recording and communication with Wit.ai.
 
 ## Why?
 
