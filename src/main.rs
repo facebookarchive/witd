@@ -1,8 +1,6 @@
 extern crate time;
-extern crate curl;
 extern crate http;
 extern crate url;
-extern crate serialize;
 extern crate getopts;
 extern crate libwit;
 use std::collections::HashMap;

@@ -1,7 +1,6 @@
 #![crate_name="libwit"]
 #![crate_type="dylib"]
 
-extern crate time;
 extern crate curl;
 extern crate serialize;
 use std::io::MemWriter;
