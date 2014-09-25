@@ -1,9 +1,7 @@
-extern crate libc;
-
 use std::ptr::null;
 use std::io;
 use std::c_str::CString;
-use self::libc::{c_char, c_uchar, c_int, c_uint, c_double, c_void, size_t};
+use libc::{c_char, c_uchar, c_int, c_uint, c_double, c_void, size_t};
 use std::comm::{Empty, Disconnected};
 use std::vec::Vec;
 

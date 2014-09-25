@@ -2,7 +2,7 @@ extern crate time;
 extern crate http;
 extern crate url;
 extern crate getopts;
-extern crate libwit;
+extern crate wit;
 use std::collections::HashMap;
 use std::io::net::ip::{SocketAddr, IpAddr, Ipv4Addr};
 use std::os;
@@ -17,7 +17,7 @@ use http::headers::content_type::MediaType;
 struct HttpServer {
     host: IpAddr,
     port: u16,
-    wit_handle: libwit::WitHandle
+    wit_handle: wit::cmd::WitHandle
 }
 
 fn parse_query_params<'s>(uri: &'s str) -> HashMap<&'s str, &'s str> {
@@ -84,7 +84,7 @@ impl Server for HttpServer {
                             return;
                         }
 
-                        let res = libwit::text_query(
+                        let res = wit::cmd::text_query(
                             &self.wit_handle,
                             text.unwrap().to_string(),
                             token.unwrap().to_string()
@@ -108,13 +108,13 @@ impl Server for HttpServer {
                             return;
                         }
 
-                        libwit::start_recording(
+                        wit::cmd::start_recording(
                             &self.wit_handle,
                             token.unwrap().to_string()
                         );
                     },
                     ["/stop", ..] => {
-                        let res = libwit::stop_recording(&self.wit_handle);
+                        let res = wit::cmd::stop_recording(&self.wit_handle);
                         write_resp(res, w);
                     },
                     _ => println!("unk uri: {}", uri)
@@ -163,7 +163,7 @@ fn main() {
     }
 
     let device_opt = matches.opt_str("input");
-    let handle = libwit::init(device_opt);
+    let handle = wit::cmd::init(device_opt);
 
     let server = HttpServer {
         host: host,
