@@ -7,19 +7,12 @@ use client;
 pub type WitHandle = Sender<client::WitCommand>;
 
 fn receive_json(receiver: Receiver<Result<json::Json,client::RequestError>>) -> Option<String> {
-    let result = receiver.recv();
-    println!("[wit] received from wit: {}", result);
-    match result {
-        Ok(json) => {
-            let mut s = MemWriter::new();
-            json.to_pretty_writer(&mut s as &mut io::Writer).unwrap();
-            String::from_utf8(s.unwrap()).ok()
-        }
-        Err(e) => {
-            println!("[wit] an error occurred: {}", e)
-            None
-        }
-    }
+    receiver.recv().ok().and_then(|json| {
+        println!("[wit] received response: {}", json);
+        let mut s = MemWriter::new();
+        json.to_writer(&mut s as &mut io::Writer).unwrap();
+        String::from_utf8(s.unwrap()).ok()
+    })
 }
 
 pub fn init(device_opt: Option<String>) -> WitHandle {

@@ -1,6 +1,7 @@
 extern crate curl;
 extern crate serialize;
 extern crate libc;
+extern crate url;
 
 #[cfg(c_target)]
 extern crate native;

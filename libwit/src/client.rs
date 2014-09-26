@@ -6,6 +6,7 @@ use curl::ErrCode;
 use serialize::json;
 use serialize::json::Json;
 use curl::http::body::{Body, ToBody, ChunkedBody};
+use url;
 
 use mic;
 
@@ -17,8 +18,10 @@ pub enum WitCommand {
 
 #[deriving(Show)]
 pub enum RequestError {
+    InvalidResponseError,
     ParserError(json::ParserError),
-    NetworkError(ErrCode)
+    NetworkError(ErrCode),
+    StatusError(uint)
 }
 
 pub struct State {
@@ -31,25 +34,42 @@ pub struct Options {
 }
 
 fn exec_request(request: Request, token: String) -> Result<Json,RequestError> {
-    // println!("[http] starting request");
     request
         .header("Authorization", format!("Bearer {}", token).as_slice())
         .header("Accept", "application/vnd.wit.20140620+json")
         .exec()
-        .map_err(|e| NetworkError(e))
+        .map_err(|e| {
+            println!("[wit] network error: {}", e);
+            NetworkError(e)
+        })
         .and_then(|x| {
-            // println!("[http] wit resp={}", x);
+            let status = x.get_code();
+            if status >= 400 {
+                println!("[wit] server responded with error: {}", status);
+                return Err(StatusError(status));
+            }
             let body = x.get_body();
-            let str = str::from_utf8(body.as_slice()).expect("Response was not valid UTF-8");
-            let obj = json::from_str(str);
-            obj.map_err(|e| ParserError(e))
+            match str::from_utf8(body.as_slice()) {
+                Some(str) => {
+                    let obj = json::from_str(str);
+                    obj.map_err(|e| {
+                        println!("[wit] could not parse response from server: {}", str);
+                        ParserError(e)
+                    })
+                }
+                None => {
+                    println!("[wit] response was not valid UTF-8");
+                    Err(InvalidResponseError)
+                }
+            }
         })
 }
 
 fn do_message_request(msg: String, token: String) -> Result<Json,RequestError> {
     let mut init_req = http::handle();
+    let encoded = url::utf8_percent_encode(msg.as_slice(), url::QUERY_ENCODE_SET);
     let req = init_req
-        .get(format!("https://api.wit.ai/message?q={}", msg));
+        .get(format!("https://api.wit.ai/message?q={}", encoded));
     exec_request(req, token)
 }
 
