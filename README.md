@@ -78,7 +78,7 @@ The procedure below describes how to cross-compile witd-arm on a Debian host tar
 * Install the required libraries on the Raspberry Pi
 ```bash
 pi@raspberrypi ~$ sudo apt-get install libssl-dev libcurl4-openssl-dev libcrypto++-dev libsox
-pi@raspberrypi ~$ cp /usr/lib/libsox.so /usr/lib/arm-linux-gnueabihf/libsox.so
+pi@raspberrypi ~$ cp /usr/lib/libsox.so /usr/lib/arm-linux-gnueabihf
 ```
 * Install sshfs so that the build script running on the host can access the precompiled libraries on the Raspberry Pi by mounting a remote filesystem:
 ```bash
