@@ -10,3 +10,6 @@ crate-type = ["rlib"]
 
 [dependencies.curl]
 git = "https://github.com/carllerche/curl-rust.git"
+
+[dependencies.url]
+git = "https://github.com/servo/rust-url.git"
