@@ -37,7 +37,7 @@ for d in "${paths[@]}"; do
 done
 
 echo "Compiling..."
-cargo build --target=arm-unknown-linux-gnueabihf || true
+cargo build --release --target=arm-unknown-linux-gnueabihf || true
 
 for d in "${paths[@]}"
 do
