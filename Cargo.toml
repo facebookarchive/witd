@@ -8,4 +8,4 @@ authors = ["martin <martin@wit.ai", "oliv <oliv@wit.ai>", "willy <willy@wit.ai>"
 git = "https://github.com/chris-morgan/rust-http"
 
 [dependencies.libwit]
-path = "libwit"
+git = "https://github.com/wit-ai/libwit.git"
