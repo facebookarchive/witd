@@ -17,7 +17,8 @@ use http::headers::content_type::MediaType;
 struct HttpServer {
     host: IpAddr,
     port: u16,
-    wit_handle: wit::cmd::WitHandle
+    wit_handle: wit::cmd::WitHandle,
+    default_autoend: bool
 }
 
 fn parse_query_params<'s>(uri: &'s str) -> HashMap<&'s str, &'s str> {
@@ -108,10 +109,25 @@ impl Server for HttpServer {
                             return;
                         }
 
-                        wit::cmd::start_recording(
-                            &self.wit_handle,
-                            token.unwrap().to_string()
-                        );
+                        let autoend_enabled = params
+                            .find(&"autoend")
+                            .and_then(|x| {from_str(*x)})
+                            .unwrap_or(self.default_autoend);
+
+                        if autoend_enabled {
+                            let res = wit::cmd::start_autoend_recording(
+                                &self.wit_handle,
+                                token.unwrap().to_string()
+                            );
+                            res.map(|s| {
+                                w.write(format!("{}", s).as_bytes()).unwrap()
+                            });
+                        } else {
+                            wit::cmd::start_recording(
+                                &self.wit_handle,
+                                token.unwrap().to_string()
+                            );
+                        }
                     },
                     ["/stop", ..] => {
                         let res = wit::cmd::stop_recording(&self.wit_handle);
@@ -132,7 +148,8 @@ fn main() {
         optflag("h", "help", "display this help message"),
         optopt("i", "input", "select input device", "default"),
         optopt("a", "host", "IP address to listen on", "0.0.0.0"),
-        optopt("p", "port", "TCP port to listen on", "9877")
+        optopt("p", "port", "TCP port to listen on", "9877"),
+        optopt("e", "autoend", "Enable end of speech detection", "false")
     ];
 
     let matches = match getopts(args.tail(), opts) {
@@ -154,6 +171,13 @@ fn main() {
                  .as_slice())
         .unwrap_or(9877);
 
+    let default_autoend: bool = matches
+        .opt_str("autoend")
+        .and_then(|x| {
+            from_str(x.as_slice())
+        })
+        .unwrap_or(false);
+
     // println!("{}, {}", matches.opt_present("l"), matches.opt_strs("input"));
 
     // before Wit is initialized
@@ -168,7 +192,8 @@ fn main() {
     let server = HttpServer {
         host: host,
         port: port,
-        wit_handle: handle
+        wit_handle: handle,
+        default_autoend: default_autoend
     };
 
     println!("[witd] listening on {}:{}", host.to_string(), port);
