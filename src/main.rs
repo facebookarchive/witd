@@ -3,10 +3,14 @@ extern crate http;
 extern crate url;
 extern crate getopts;
 extern crate wit;
+extern crate serialize;
 use std::collections::HashMap;
 use std::io::net::ip::{SocketAddr, IpAddr, Ipv4Addr};
-use std::os;
+use std::{os, io};
 use getopts::{optopt,optflag,getopts,usage};
+use serialize::json;
+use std::io::MemWriter;
+
 
 use http::server::{Config, Server, ResponseWriter};
 use http::server::request::{AbsolutePath, Request};
@@ -36,8 +40,17 @@ fn parse_query_params<'s>(uri: &'s str) -> HashMap<&'s str, &'s str> {
     return args;
 }
 
-fn write_resp(res: Option<String>, w: &mut ResponseWriter) {
-    match res {
+fn opt_string_from_result(json_result: Result<json::Json, wit::cmd::RequestError>) -> Option<String> {
+    json_result.ok().and_then(|json| {
+        println!("[wit] received response: {}", json);
+        let mut s = MemWriter::new();
+        json.to_writer(&mut s as &mut io::Writer).unwrap();
+        String::from_utf8(s.unwrap()).ok()
+    })
+}
+
+fn write_resp(res: Result<json::Json, wit::cmd::RequestError>, w: &mut ResponseWriter) {
+    match opt_string_from_result(res) {
         Some(s) => w.write(format!("{}", s).as_bytes()).unwrap(),
         None => {
             w.status = InternalServerError;
@@ -108,6 +121,7 @@ impl Server for HttpServer {
                                 .unwrap_or_else(|e| println!("could not write resp: {}", e));
                             return;
                         }
+                        let token = token.unwrap().to_string();
 
                         let autoend_enabled = params
                             .find(&"autoend")
@@ -115,22 +129,20 @@ impl Server for HttpServer {
                             .unwrap_or(self.default_autoend);
 
                         if autoend_enabled {
-                            let res = wit::cmd::start_autoend_recording(
+                            let res = wit::cmd::voice_query_auto(
                                 &self.wit_handle,
-                                token.unwrap().to_string()
+                                token
                             );
-                            res.map(|s| {
-                                w.write(format!("{}", s).as_bytes()).unwrap()
-                            });
+                            write_resp(res, w);
                         } else {
-                            wit::cmd::start_recording(
+                            wit::cmd::voice_query_start(
                                 &self.wit_handle,
-                                token.unwrap().to_string()
+                                token
                             );
                         }
                     },
                     ["/stop", ..] => {
-                        let res = wit::cmd::stop_recording(&self.wit_handle);
+                        let res = wit::cmd::voice_query_stop(&self.wit_handle);
                         write_resp(res, w);
                     },
                     _ => println!("unk uri: {}", uri)
