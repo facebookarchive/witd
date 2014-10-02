@@ -26,20 +26,20 @@ Start the server:
 ```bash
 $ HOST=0.0.0.0 PORT=9877 ./target/witd
 ```
+The `HOST` and `PORT` variables are optional, but you can override them to use different values, or use the `-a` and `-p` options instead. Run `./target/witd --help` for more details.
 
 ## Send requests
 
 ### Speech request
 
-For the moment, witd requires that you tell it when to start and stop recording. Moving forward, 2 new modes will be added:
+For the moment, witd requires that you tell it when to start recording. For stopping, you can either do it manually or automatically detect when the user stops speaking. In the future, we plan to automatically detect when the user starts talking as well.
 
-- "silence detection" to stop the recording
-- "hands-free" to start and stop the recording when user is speaking
+#### Without end-of-speech detection
 
 Start recording audio and streaming it to wit.ai:
 
 ```bash
-$ curl -X GET "http://localhost:9877/start&access_token=<YOUR_ACCESS_TOKEN>"
+$ curl -X GET "http://localhost:9877/start?access_token=<YOUR_ACCESS_TOKEN>"
 ```
 
 Stop recording audio and receive the wit.ai response:
@@ -47,6 +47,23 @@ Stop recording audio and receive the wit.ai response:
 $ curl -X GET "http://localhost:9877/stop"
 {"_text":"Hello world","msg_id":"fbe2a1ff-3869-49d8-885d-67e23357ffdc","outcomes":[{"_text":"Hello world","confidence":0.263,"entities":{"location":[{"suggested":true,"value":"Hello world"}]},"intent":"get_weather"}]}
 ```
+
+#### With end-of-speech detection
+
+Start recording audio and streaming it to wit.ai, and return a response when the user stops speaking:
+
+```bash
+$ curl -X GET "http://localhost:9877/start?autoend=true&access_token=<YOUR_ACCESS_TOKEN>"
+{"_text":"Hello world","msg_id":"fbe2a1ff-3869-49d8-885d-67e23357ffdc","outcomes":[{"_text":"Hello world","confidence":0.263,"entities":{"location":[{"suggested":true,"value":"Hello world"}]},"intent":"get_weather"}]}
+```
+
+If you want all your queries to use end-of-speech detection, you can also start witd with "-e true":
+
+```bash
+$ HOST=0.0.0.0 PORT=9877 ./target/witd -e true
+```
+
+Note that the `curl` call blocks until the user has stopped speaking and a response is available. If the end of speech detection fails, you can still use `curl -X GET "http://localhost:9877/stop` to stop streaming audio and get the response immediately. 
 
 ### Text request
 
