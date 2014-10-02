@@ -57,6 +57,8 @@ $ curl -X GET "http://localhost:9877/start?autoend=true&access_token=<YOUR_ACCES
 {"_text":"Hello world","msg_id":"fbe2a1ff-3869-49d8-885d-67e23357ffdc","outcomes":[{"_text":"Hello world","confidence":0.263,"entities":{"location":[{"suggested":true,"value":"Hello world"}]},"intent":"get_weather"}]}
 ```
 
+Note the use of the argument `autoend=true`.
+
 If you want all your queries to use end-of-speech detection, you can also start witd with "-e true":
 
 ```bash
