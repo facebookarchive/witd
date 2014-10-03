@@ -161,7 +161,8 @@ fn main() {
         optopt("i", "input", "select input device", "default"),
         optopt("a", "host", "IP address to listen on", "0.0.0.0"),
         optopt("p", "port", "TCP port to listen on", "9877"),
-        optopt("e", "autoend", "Enable end of speech detection", "false")
+        optopt("e", "autoend", "Enable end of speech detection", "false"),
+        optopt("v", "verbosity", "Verbosity level", "3")
     ];
 
     let matches = match getopts(args.tail(), opts) {
@@ -199,7 +200,10 @@ fn main() {
     }
 
     let device_opt = matches.opt_str("input");
-    let handle = wit::cmd::init(device_opt);
+    let verbosity = matches.opt_str("verbosity")
+                        .and_then(|s| { from_str(s.as_slice()) })
+                        .unwrap_or(3);
+    let handle = wit::cmd::init(device_opt, verbosity);
 
     let server = HttpServer {
         host: host,
@@ -208,6 +212,8 @@ fn main() {
         default_autoend: default_autoend
     };
 
-    println!("[witd] listening on {}:{}", host.to_string(), port);
+    if verbosity > 0 {
+        println!("[witd] listening on {}:{}", host.to_string(), port);
+    }
     server.serve_forever();
 }
