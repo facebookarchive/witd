@@ -1,26 +1,22 @@
 extern crate time;
-extern crate http;
+extern crate hyper;
 extern crate url;
 extern crate getopts;
 extern crate wit;
 extern crate serialize;
+
 use std::collections::HashMap;
-use std::io::net::ip::{SocketAddr, IpAddr, Ipv4Addr};
+use std::io::net::ip::{IpAddr, Ipv4Addr};
 use std::{os, io};
-use getopts::{optopt,optflag,getopts,usage};
+use getopts::{optopt, optflag, getopts, usage};
 use serialize::json;
 use std::io::MemWriter;
 
-
-use http::server::{Config, Server, ResponseWriter};
-use http::server::request::{AbsolutePath, Request};
-use http::status::InternalServerError;
-use http::headers::content_type::MediaType;
+use hyper::{status, server, uri, net};
+use hyper::header::common;
 
 #[deriving(Clone)]
-struct HttpServer {
-    host: IpAddr,
-    port: u16,
+struct HttpHandler {
     wit_handle: wit::cmd::WitHandle,
     default_autoend: bool
 }
@@ -49,107 +45,109 @@ fn opt_string_from_result(json_result: Result<json::Json, wit::cmd::RequestError
     })
 }
 
-fn write_resp(res: Result<json::Json, wit::cmd::RequestError>, w: &mut ResponseWriter) {
-    match opt_string_from_result(res) {
-        Some(s) => w.write(format!("{}", s).as_bytes()).unwrap(),
+fn write_resp(wit_res: Result<json::Json, wit::cmd::RequestError>, mut res: server::Response<net::Fresh>) {
+    match opt_string_from_result(wit_res) {
+        Some(s) => {
+            let mut res = res.start().ok().expect("unable to start writing response.");
+            res.write(format!("{}", s).as_bytes()).unwrap()
+        },
         None => {
-            w.status = InternalServerError;
-            w.write(b"something went wrong, sowwy!").unwrap();
+            *res.status_mut() = status::InternalServerError;
+            let mut res = res.start().ok().expect("unable to start writing response.");
+            res.write(b"something went wrong, sowwy!").unwrap();
         }
     }
 }
 
-impl Server for HttpServer {
-    fn get_config(&self) -> Config {
-        Config { bind_address: SocketAddr { ip: self.host, port: self.port } }
-    }
+impl server::Handler<net::HttpAcceptor, net::HttpStream> for HttpHandler {
+    fn handle(self, mut incoming: server::Incoming) {
+        for (mut req, mut res) in incoming {
+            let this = self.clone();
+            spawn(proc() {
+                res.headers_mut().set(common::Date(time::now_utc()));
+                res.headers_mut().set(common::ContentType(from_str("application/json; charset=utf-8").unwrap()));
+                res.headers_mut().set(common::Server("witd 0.0.1".to_string()));
 
-    fn handle_request(&self, r: http::server::request::Request, w: &mut ResponseWriter) {
-        w.headers.date = Some(time::now_utc());
-        w.headers.content_type = Some(MediaType {
-            type_: format!("application"),
-            subtype: format!("json"),
-            parameters: vec!((format!("charset"), format!("UTF-8")))
-        });
+                match req.uri {
+                    uri::AbsolutePath(ref uri) => {
+                        let uri_vec:Vec<&str> = uri.as_slice().split('?').collect();
 
-        w.headers.server = Some(format!("witd 0.0.1"));
+                        match uri_vec.as_slice() {
+                            ["/text", args..] => {
+                                if args.len() == 0 {
+                                    let mut res = res.start().ok().expect("unable to start writing response.");
+                                    res.write("params not found (token or q)".as_bytes())
+                                        .unwrap_or_else(|e| println!("could not write resp: {}", e));
+                                    return;
+                                }
 
+                                let params = parse_query_params(uri_vec[1]);
+                                let token = params.find(&"access_token");
+                                let text = params.find(&"q");
 
-        println!("[http] request: {}", r.request_uri);
-        match r.request_uri {
-            AbsolutePath(ref uri) => {
-                let uri_vec:Vec<&str> = uri.as_slice().split('?').collect();
+                                if token.is_none() || text.is_none() {
+                                    let mut res = res.start().ok().expect("unable to start writing response.");
+                                    res.write("params not found (token or q)".as_bytes())
+                                        .unwrap_or_else(|e| println!("could not write resp: {}", e));
+                                    return;
+                                }
 
-                match uri_vec.as_slice() {
-                    ["/text", args..] => {
-                        if args.len() == 0 {
-                            w.write("params not found (token or q)".as_bytes())
-                                .unwrap_or_else(|e| println!("could not write resp: {}", e));
-                            return;
+                                let wit_res = wit::cmd::text_query(
+                                    &this.wit_handle,
+                                    text.unwrap().to_string(),
+                                    token.unwrap().to_string()
+                                );
+                                write_resp(wit_res, res);
+                            },
+                            ["/start", args..] => {
+                                // async Wit start
+                                if args.len() == 0 {
+                                    let mut res = res.start().ok().expect("unable to start writing response.");
+                                    res.write("params not found (token)".as_bytes())
+                                        .unwrap_or_else(|e| println!("could not write resp: {}", e));
+                                    return;
+                                }
+
+                                let params = parse_query_params(uri_vec[1]);
+                                let token = params.find(&"access_token");
+
+                                if token.is_none() {
+                                    let mut res = res.start().ok().expect("unable to start writing response.");
+                                    res.write("params not found (token)".as_bytes())
+                                        .unwrap_or_else(|e| println!("could not write resp: {}", e));
+                                    return;
+                                }
+                                let token = token.unwrap().to_string();
+
+                                let autoend_enabled = params
+                                    .find(&"autoend")
+                                    .and_then(|x| {from_str(*x)})
+                                    .unwrap_or(this.default_autoend);
+
+                                if autoend_enabled {
+                                    let wit_res = wit::cmd::voice_query_auto(
+                                        &this.wit_handle,
+                                        token
+                                    );
+                                    write_resp(wit_res, res);
+                                } else {
+                                    wit::cmd::voice_query_start(
+                                        &this.wit_handle,
+                                        token
+                                    );
+                                }
+                            },
+                            ["/stop", ..] => {
+                                let wit_res = wit::cmd::voice_query_stop(&this.wit_handle);
+                                write_resp(wit_res, res);
+                            },
+                            _ => println!("unk uri: {}", uri)
                         }
-
-                        let params = parse_query_params(uri_vec[1]);
-                        let token = params.find(&"access_token");
-                        let text = params.find(&"q");
-
-                        if token.is_none() || text.is_none() {
-                            w.write("params not found (token or q)".as_bytes())
-                                .unwrap_or_else(|e| println!("could not write resp: {}", e));
-                            return;
-                        }
-
-                        let res = wit::cmd::text_query(
-                            &self.wit_handle,
-                            text.unwrap().to_string(),
-                            token.unwrap().to_string()
-                        );
-                        write_resp(res, w);
                     },
-                    ["/start", args..] => {
-                        // async Wit start
-                        if args.len() == 0 {
-                            w.write("params not found (token)".as_bytes())
-                                .unwrap_or_else(|e| println!("could not write resp: {}", e));
-                            return;
-                        }
-
-                        let params = parse_query_params(uri_vec[1]);
-                        let token = params.find(&"access_token");
-
-                        if token.is_none() {
-                            w.write("params not found (token)".as_bytes())
-                                .unwrap_or_else(|e| println!("could not write resp: {}", e));
-                            return;
-                        }
-                        let token = token.unwrap().to_string();
-
-                        let autoend_enabled = params
-                            .find(&"autoend")
-                            .and_then(|x| {from_str(*x)})
-                            .unwrap_or(self.default_autoend);
-
-                        if autoend_enabled {
-                            let res = wit::cmd::voice_query_auto(
-                                &self.wit_handle,
-                                token
-                            );
-                            write_resp(res, w);
-                        } else {
-                            wit::cmd::voice_query_start(
-                                &self.wit_handle,
-                                token
-                            );
-                        }
-                    },
-                    ["/stop", ..] => {
-                        let res = wit::cmd::voice_query_stop(&self.wit_handle);
-                        write_resp(res, w);
-                    },
-                    _ => println!("unk uri: {}", uri)
+                    _ => println!("not absolute uri")
                 }
-            }
-            _ => println!("not absolute uri")
-        };
+            });
+        }
     }
 }
 
@@ -191,8 +189,6 @@ fn main() {
         })
         .unwrap_or(false);
 
-    // println!("{}, {}", matches.opt_present("l"), matches.opt_strs("input"));
-
     // before Wit is initialized
     if matches.opt_present("help") {
         println!("{}", usage("witd (https://github.com/wit-ai/witd)", opts.as_slice()));
@@ -205,15 +201,18 @@ fn main() {
                         .unwrap_or(3);
     let handle = wit::cmd::init(device_opt, verbosity);
 
-    let server = HttpServer {
-        host: host,
-        port: port,
-        wit_handle: handle,
-        default_autoend: default_autoend
-    };
+    let server = hyper::server::Server::http(host, port);
 
-    if verbosity > 0 {
-        println!("[witd] listening on {}:{}", host.to_string(), port);
+    match server.listen(HttpHandler { wit_handle: handle, default_autoend: default_autoend }) {
+        Ok(_) => {
+            if verbosity > 0 {
+                println!("[witd] listening on {}:{}", host.to_string(), port);
+            }
+        },
+
+        Err(e) => {
+            println!("Couldn't listen: {}", e);
+        }
     }
-    server.serve_forever();
 }
+

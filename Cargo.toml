@@ -4,8 +4,9 @@ name = "witd"
 version = "0.0.1"
 authors = ["martin <martin@wit.ai", "oliv <oliv@wit.ai>", "willy <willy@wit.ai>"]
 
-[dependencies.http]
-git = "https://github.com/chris-morgan/rust-http"
+[dependencies.hyper]
+git = "https://github.com/hyperium/hyper.git"
 
 [dependencies.libwit]
 git = "https://github.com/wit-ai/libwit.git"
+
