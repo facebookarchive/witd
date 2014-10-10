@@ -19,6 +19,9 @@ We provide clients that do exactly that for iOS and Android.
 $ cargo build
 ```
 
+`witd` also depends on `sox`, which you can install using the package manager for
+your system.
+
 ## Start the server
 
 Start the server:
