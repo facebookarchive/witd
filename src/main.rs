@@ -34,7 +34,7 @@ fn parse_query_params<'s>(uri: &'s str) -> HashMap<&'s str, &'s str> {
             [k] => args.insert(k, "true"),
             [k, v] => args.insert(k, v),
             [k, v, ..] => args.insert(k, v),
-            _ => false
+            _ => None
         };
     }
     return args;
@@ -89,8 +89,8 @@ impl Server for HttpServer {
                         }
 
                         let params = parse_query_params(uri_vec[1]);
-                        let token = params.find(&"access_token");
-                        let text = params.find(&"q");
+                        let token = params.get(&"access_token");
+                        let text = params.get(&"q");
 
                         if token.is_none() || text.is_none() {
                             w.write("params not found (token or q)".as_bytes())
@@ -114,7 +114,7 @@ impl Server for HttpServer {
                         }
 
                         let params = parse_query_params(uri_vec[1]);
-                        let token = params.find(&"access_token");
+                        let token = params.get(&"access_token");
 
                         if token.is_none() {
                             w.write("params not found (token)".as_bytes())
@@ -124,7 +124,7 @@ impl Server for HttpServer {
                         let token = token.unwrap().to_string();
 
                         let autoend_enabled = params
-                            .find(&"autoend")
+                            .get(&"autoend")
                             .and_then(|x| {from_str(*x)})
                             .unwrap_or(self.default_autoend);
 
@@ -165,9 +165,9 @@ fn main() {
         optopt("v", "verbosity", "Verbosity level", "3")
     ];
 
-    let matches = match getopts(args.tail(), opts) {
+    let matches = match getopts(args.tail(), &opts) {
         Ok(m) => m,
-        Err(f) => fail!(f.to_string())
+        Err(f) => panic!(f.to_string())
     };
 
     let host: IpAddr =
