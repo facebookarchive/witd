@@ -1,27 +1,27 @@
 extern crate time;
-extern crate http;
+extern crate hyper;
 extern crate url;
 extern crate getopts;
 extern crate wit;
 extern crate serialize;
+extern crate sync;
+
 use std::collections::HashMap;
-use std::io::net::ip::{SocketAddr, IpAddr, Ipv4Addr};
+use std::io::net::ip::{IpAddr, Ipv4Addr};
 use std::{os, io};
-use getopts::{optopt,optflag,getopts,usage};
+use getopts::{optopt, optflag, getopts, usage};
 use serialize::json;
+use serialize::json::Json;
 use std::io::MemWriter;
+use std::collections::TreeMap;
+use hyper::{status, server, uri};
+use hyper::header::common;
+use hyper::server::response::Response;
+use hyper::server::request::Request;
+use sync::Mutex;
 
-
-use http::server::{Config, Server, ResponseWriter};
-use http::server::request::{AbsolutePath, Request};
-use http::status::InternalServerError;
-use http::headers::content_type::MediaType;
-
-#[deriving(Clone)]
-struct HttpServer {
-    host: IpAddr,
-    port: u16,
-    wit_handle: wit::cmd::WitHandle,
+struct HttpHandler {
+    wit_handle: Mutex<wit::cmd::WitHandle>,
     default_autoend: bool
 }
 
@@ -49,41 +49,47 @@ fn opt_string_from_result(json_result: Result<json::Json, wit::cmd::RequestError
     })
 }
 
-fn write_resp(res: Result<json::Json, wit::cmd::RequestError>, w: &mut ResponseWriter) {
-    match opt_string_from_result(res) {
-        Some(s) => w.write(format!("{}", s).as_bytes()).unwrap(),
+fn write_resp(wit_res: Result<json::Json, wit::cmd::RequestError>, mut res: server::Response) {
+    match opt_string_from_result(wit_res) {
+        Some(s) => {
+            let mut res = res.start().ok().expect("unable to start writing response.");
+            res.write(format!("{}", s).as_bytes());
+            res.end().unwrap();
+        },
         None => {
-            w.status = InternalServerError;
-            w.write(b"something went wrong, sowwy!").unwrap();
+            *res.status_mut() = status::InternalServerError;
+            let mut res = res.start().ok().expect("unable to start writing response.");
+            res.write(b"something went wrong, sowwy!");
+            res.end().unwrap();
         }
     }
 }
 
-impl Server for HttpServer {
-    fn get_config(&self) -> Config {
-        Config { bind_address: SocketAddr { ip: self.host, port: self.port } }
-    }
+fn json_status_response<T>(status: &str) -> Result<Json, T> {
+    let mut map = TreeMap::new();
+    map.insert("status".to_string(), Json::String(status.to_string()));
+    Ok(Json::Object(map))
+}
 
-    fn handle_request(&self, r: http::server::request::Request, w: &mut ResponseWriter) {
-        w.headers.date = Some(time::now_utc());
-        w.headers.content_type = Some(MediaType {
-            type_: format!("application"),
-            subtype: format!("json"),
-            parameters: vec!((format!("charset"), format!("UTF-8")))
-        });
+impl server::Handler for HttpHandler {
+    fn handle(&self, req: Request, mut res: Response) {
+        let handle = {
+            let handle_lock = self.wit_handle.lock();
+            handle_lock.clone()
+        };
+        res.headers_mut().set(common::Date(time::now_utc()));
+        res.headers_mut().set(common::ContentType(from_str("application/json; charset=utf-8").unwrap()));
+        res.headers_mut().set(common::Server("witd 0.0.1".to_string()));
 
-        w.headers.server = Some(format!("witd 0.0.1"));
-
-
-        println!("[http] request: {}", r.request_uri);
-        match r.request_uri {
-            AbsolutePath(ref uri) => {
+        match req.uri {
+            uri::AbsolutePath(ref uri) => {
                 let uri_vec:Vec<&str> = uri.as_slice().split('?').collect();
 
                 match uri_vec.as_slice() {
                     ["/text", args..] => {
                         if args.len() == 0 {
-                            w.write("params not found (token or q)".as_bytes())
+                            let mut res = res.start().ok().expect("unable to start writing response.");
+                            res.write("params not found (token or q)".as_bytes())
                                 .unwrap_or_else(|e| println!("could not write resp: {}", e));
                             return;
                         }
@@ -93,22 +99,24 @@ impl Server for HttpServer {
                         let text = params.get(&"q");
 
                         if token.is_none() || text.is_none() {
-                            w.write("params not found (token or q)".as_bytes())
+                            let mut res = res.start().ok().expect("unable to start writing response.");
+                            res.write("params not found (token or q)".as_bytes())
                                 .unwrap_or_else(|e| println!("could not write resp: {}", e));
                             return;
                         }
 
-                        let res = wit::cmd::text_query(
-                            &self.wit_handle,
+                        let wit_res = wit::cmd::text_query(
+                            &handle,
                             text.unwrap().to_string(),
                             token.unwrap().to_string()
                         );
-                        write_resp(res, w);
+                        write_resp(wit_res, res);
                     },
                     ["/start", args..] => {
                         // async Wit start
                         if args.len() == 0 {
-                            w.write("params not found (token)".as_bytes())
+                            let mut res = res.start().ok().expect("unable to start writing response.");
+                            res.write("params not found (token)".as_bytes())
                                 .unwrap_or_else(|e| println!("could not write resp: {}", e));
                             return;
                         }
@@ -117,7 +125,8 @@ impl Server for HttpServer {
                         let token = params.get(&"access_token");
 
                         if token.is_none() {
-                            w.write("params not found (token)".as_bytes())
+                            let mut res = res.start().ok().expect("unable to start writing response.");
+                            res.write("params not found (token)".as_bytes())
                                 .unwrap_or_else(|e| println!("could not write resp: {}", e));
                             return;
                         }
@@ -129,27 +138,31 @@ impl Server for HttpServer {
                             .unwrap_or(self.default_autoend);
 
                         if autoend_enabled {
-                            let res = wit::cmd::voice_query_auto(
-                                &self.wit_handle,
+                            let wit_res = wit::cmd::voice_query_auto(
+                                &handle,
                                 token
                             );
-                            write_resp(res, w);
+                            write_resp(wit_res, res);
                         } else {
                             wit::cmd::voice_query_start(
-                                &self.wit_handle,
+                                &handle,
                                 token
                             );
+                            write_resp(json_status_response("ok"), res);
                         }
                     },
                     ["/stop", ..] => {
-                        let res = wit::cmd::voice_query_stop(&self.wit_handle);
-                        write_resp(res, w);
+                        let wit_res = wit::cmd::voice_query_stop(&handle);
+                        write_resp(wit_res, res);
                     },
-                    _ => println!("unk uri: {}", uri)
+                    _ => {
+                        println!("unk uri: {}", uri);
+                        write_resp(json_status_response("error"), res);
+                    }
                 }
-            }
+            },
             _ => println!("not absolute uri")
-        };
+        }
     }
 }
 
@@ -191,8 +204,6 @@ fn main() {
         })
         .unwrap_or(false);
 
-    // println!("{}, {}", matches.opt_present("l"), matches.opt_strs("input"));
-
     // before Wit is initialized
     if matches.opt_present("help") {
         println!("{}", usage("witd (https://github.com/wit-ai/witd)", opts.as_slice()));
@@ -205,15 +216,18 @@ fn main() {
                         .unwrap_or(3);
     let handle = wit::cmd::init(device_opt, verbosity);
 
-    let server = HttpServer {
-        host: host,
-        port: port,
-        wit_handle: handle,
-        default_autoend: default_autoend
-    };
+    let server = hyper::server::Server::http(host, port);
 
-    if verbosity > 0 {
-        println!("[witd] listening on {}:{}", host.to_string(), port);
+    match server.listen(HttpHandler { wit_handle: Mutex::new(handle), default_autoend: default_autoend }) {
+        Ok(_) => {
+            if verbosity > 0 {
+                println!("[witd] listening on {}:{}", host.to_string(), port);
+            }
+        },
+
+        Err(e) => {
+            println!("Couldn't listen: {}", e);
+        }
     }
-    server.serve_forever();
 }
+
