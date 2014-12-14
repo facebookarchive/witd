@@ -84,7 +84,9 @@ $ curl -X GET "http://localhost:9877/text?q=Hello%20world&access_token=<YOUR_ACC
 The easiest way to have witd running on a Raspberry Pi is to trust us and run the provided ARM binary:
 
 ```bash
-./witd-arm
+wget https://github.com/wit-ai/witd/releases/download/v0.1/witd-armv6
+chmod +x witd-armv6
+./witd-armv6
 ```
 
 ### Building witd-arm for Raspberry Pi (for the brave)
