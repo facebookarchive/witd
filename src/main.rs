@@ -4,7 +4,6 @@ extern crate url;
 extern crate getopts;
 extern crate wit;
 extern crate serialize;
-extern crate sync;
 
 use std::collections::HashMap;
 use std::io::net::ip::{IpAddr, Ipv4Addr};
@@ -18,7 +17,7 @@ use hyper::{status, server, uri};
 use hyper::header::common;
 use hyper::server::response::Response;
 use hyper::server::request::Request;
-use sync::Mutex;
+use std::sync::Mutex;
 
 struct HttpHandler {
     wit_handle: Mutex<wit::cmd::WitHandle>,
@@ -45,21 +44,29 @@ fn opt_string_from_result(json_result: Result<json::Json, wit::cmd::RequestError
         println!("[wit] received response: {}", json);
         let mut s = MemWriter::new();
         json.to_writer(&mut s as &mut io::Writer).unwrap();
-        String::from_utf8(s.unwrap()).ok()
+        String::from_utf8(s.into_inner()).ok()
     })
 }
 
 fn write_resp(wit_res: Result<json::Json, wit::cmd::RequestError>, mut res: server::Response) {
+
+    fn handle_io_result<T>(result: io::IoResult<T>) {
+        match result {
+            Err(e) => println!("[wit] error writing response: {}", e),
+            _ => ()
+        };
+    }
+
     match opt_string_from_result(wit_res) {
         Some(s) => {
             let mut res = res.start().ok().expect("unable to start writing response.");
-            res.write(format!("{}", s).as_bytes());
+            handle_io_result(res.write(format!("{}", s).as_bytes()));
             res.end().unwrap();
         },
         None => {
-            *res.status_mut() = status::InternalServerError;
+            *res.status_mut() = status::StatusCode::InternalServerError;
             let mut res = res.start().ok().expect("unable to start writing response.");
-            res.write(b"something went wrong, sowwy!");
+            handle_io_result(res.write(b"something went wrong, sowwy!"));
             res.end().unwrap();
         }
     }
@@ -82,7 +89,7 @@ impl server::Handler for HttpHandler {
         res.headers_mut().set(common::Server("witd 0.0.1".to_string()));
 
         match req.uri {
-            uri::AbsolutePath(ref uri) => {
+            uri::RequestUri::AbsolutePath(ref uri) => {
                 let uri_vec:Vec<&str> = uri.as_slice().split('?').collect();
 
                 match uri_vec.as_slice() {
