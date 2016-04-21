@@ -1,6 +1,6 @@
 # witd
 
-* This SDK is community-maintained and likely broken. Please use the HTTP API or the Node.js/Python/Ruby SDKs for non-experimental needs (https://wit.ai/docs). We gladly accept pull requests *
+*This SDK is community-maintained and likely broken. Please use the HTTP API or the Node.js/Python/Ruby SDKs for non-experimental needs (https://wit.ai/docs). We gladly accept pull requests*
 
 `witd` is a light executable that makes it easy to use Wit.ai on a wide range of devices. It manages client audio recording and communication with Wit.ai.
 
